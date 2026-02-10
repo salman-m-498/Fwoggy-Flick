@@ -2,6 +2,18 @@ import { Tile } from './Tile.js';
 import { NormalTile } from './NormalTile.js';
 import { HardenedTile } from './HardenedTile.js';
 import { BombTile } from './BombTile.js';
+import { IceTile } from './IceTile.js';
+
+// Tile spawn configuration - higher weight = more common
+const TILE_SPAWN_CONFIG = [
+    { tileClass: NormalTile, weight: 60 },
+    { tileClass: BombTile, weight: 20 },
+    { tileClass: HardenedTile, weight: 15 },
+    { tileClass: IceTile, weight: 5 },
+];
+
+// Calculate total weight for normalization
+const TOTAL_WEIGHT = TILE_SPAWN_CONFIG.reduce((sum, config) => sum + config.weight, 0);
 
 // In TileGrid.js
 export class TileGrid {
@@ -13,6 +25,8 @@ export class TileGrid {
         this.tileSize = tileSize;
         this.tiles = [];
         this.scrollSpeed = 1; // pixels per second
+        this.originalScrollSpeed = 1; // Store original speed
+        this.freezeTimeRemaining = 0; // Time remaining in seconds
         
         this.initializeGrid();
     }
@@ -26,33 +40,40 @@ export class TileGrid {
     }
     
     addTile(col, row) {
-        const rand = Math.random();
-        let tile;
+        // Use weighted random selection
+        const rand = Math.random() * TOTAL_WEIGHT;
+        let cumulative = 0;
+        let TileClass = NormalTile; // Fallback
         
-        if (rand > 0.8) {
-            tile = new HardenedTile(
-                this.startX + col * this.tileSize,
-                this.startY + row * this.tileSize,
-                this.tileSize
-            );
-        } else if (rand > 0.6) {
-            tile = new BombTile(
-                this.startX + col * this.tileSize,
-                this.startY + row * this.tileSize,
-                this.tileSize
-            );
-        } else {
-            tile = new NormalTile(
-                this.startX + col * this.tileSize,
-                this.startY + row * this.tileSize,
-                this.tileSize
-            );
+        for (const config of TILE_SPAWN_CONFIG) {
+            cumulative += config.weight;
+            if (rand < cumulative) {
+                TileClass = config.tileClass;
+                break;
+            }
         }
+        
+        const tile = new TileClass(
+            this.startX + col * this.tileSize,
+            this.startY + row * this.tileSize,
+            this.tileSize
+        );
         
         this.tiles.push(tile);
     }
     
     update(deltaSeconds) {
+        // Handle freeze timer
+        if (this.freezeTimeRemaining > 0) {
+            this.freezeTimeRemaining -= deltaSeconds;
+            
+            if (this.freezeTimeRemaining <= 0) {
+                // Timer expired, restore speed
+                this.scrollSpeed = this.originalScrollSpeed;
+                this.freezeTimeRemaining = 0;
+            }
+        }
+        
         // Move all tiles down
         this.startY += this.scrollSpeed * deltaSeconds;
         
@@ -78,6 +99,10 @@ export class TileGrid {
         }
         this.rows++;
     }
+
+    draw(ctx) {
+        this.tiles.forEach(tile => tile.draw(ctx));
+    }
     
     removeOffscreenTiles() {
         const bottomThreshold = 450; // Canvas height + buffer
@@ -89,13 +114,14 @@ export class TileGrid {
             return true;
         });
     }
-    
-    draw(ctx) {
-        this.tiles.forEach(tile => tile.draw(ctx));
+    freeze(duration) {
+        // Store original speed if not already frozen
+        if (this.freezeTimeRemaining <= 0) {
+            this.originalScrollSpeed = this.scrollSpeed;
+        }
+        
+        this.scrollSpeed = 0;
+        this.freezeTimeRemaining = duration; // Duration in seconds
     }
-    
-    getLowestTileY() {
-        // Helper to check if tiles reached the danger zone
-        return Math.max(...this.tiles.map(t => t.y));
-    }
+
 }

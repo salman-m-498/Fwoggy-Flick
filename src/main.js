@@ -162,10 +162,6 @@ function checkCollisions() {
             if (wall === 'top' || wall === 'bottom') flyingTile.velocity.y *= -1;
 
             flyingTile.registerBounce();
-            //Trigger bomb explosion on tile hit
-            //if (flyingTile.constructor.name === 'BombTile' && typeof flyingTile.onDestroy === 'function') {
-            //flyingTile.onDestroy(tileGrid);
-            //}
         }
 
         // 2. Check Other Tiles
@@ -173,7 +169,8 @@ function checkCollisions() {
             t.type === 'solid' || 
             t.type === 'normal' || 
             t.type === 'bomb' ||
-            t.type === 'hardened'
+            t.type === 'hardened'||
+            t.type === 'ice'
         );
         targets.forEach(otherTile => {
             if (flyingTile === otherTile) return;
@@ -182,6 +179,13 @@ function checkCollisions() {
                 // Trigger bomb explosion on tile hit
                 if (flyingTile.constructor.name === 'BombTile' && typeof flyingTile.onDestroy === 'function') {
                     flyingTile.onDestroy(tileGrid);
+                    flyingTile.type = 'empty';
+                    flyingTile.isMoving = false;
+                    return; // Exit early since bomb exploded
+                }
+                // Trigger ice freeze on tile hit
+                if (flyingTile.constructor.name === 'IceTile' && typeof flyingTile.onHit === 'function') {
+                    flyingTile.onHit(tileGrid);
                     flyingTile.type = 'empty';
                     flyingTile.isMoving = false;
                     return; // Exit early since bomb exploded
@@ -197,6 +201,13 @@ function checkCollisions() {
                     // Logic: trigger other collided bombs
                     if (otherTile.constructor.name === 'BombTile' && typeof otherTile.onDestroy === 'function') {
                         otherTile.onDestroy(tileGrid);
+                        flyingTile.registerBounce();
+                    }
+                }
+                if (otherTile.type === 'ice') {
+                    // Logic: trigger collided ice tile
+                    if (otherTile.constructor.name === 'IceTile' && typeof otherTile.onHit === 'function') {
+                        otherTile.onHit(tileGrid);
                         flyingTile.registerBounce();
                     }
                 }
@@ -245,6 +256,7 @@ function checkCollisions() {
                 case 'solid':
                 case 'normal':
                 case 'bomb':
+                case 'ice':
                     // Grabbable: Latch onto it
                     tongue.onCollision(closestTile);
                     break;
@@ -253,10 +265,6 @@ function checkCollisions() {
                     // Not Grabbable: "Clink" off and return
                     tongue.state = PLAYERSTATES.RETRACTING;
                     break;
-
-                // Future Case Examples:
-                // case 'sticky': tongue.stop(); break; 
-                // case 'explosive': closestTile.explode(); break;
 
                 default:
                     // Safety fallback
