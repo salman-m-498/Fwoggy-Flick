@@ -1,76 +1,37 @@
-import { GameObject } from '../GameObject.js';
+import { Tile } from './Tile.js';
 
-export class Tile extends GameObject {
-    constructor(x, y, size, type = 'solid') {
-        super(x, y);
-        this.size = size;
-        this.width = size;
-        this.height = size;
-        this.gapSize = 2;
-        this.velocity = { x: 0, y: 0 }; 
-        this.type = type;
-        this.canPickup = true
-        this.isMoving = false;
-        this.bounceCount = 0;
-        this.maxBounces = 5;
-    }
-
-    update(deltaSeconds) {
-        if (!this.isMoving) return;
-        this.x += this.velocity.x * deltaSeconds;
-        this.y += this.velocity.y * deltaSeconds;
-    }
-
-    getVertices() {
-        const half = this.size / 2;
-        // Tiles are usually static, but we'll support rotation just in case
-        const localVerts = [
-            { x: -half, y: -half },
-            { x: half, y: -half },
-            { x: half, y: half },
-            { x: -half, y: half }
-        ];
-        // Note: Tile x,y is usually top-left, so we adjust to center for rotation
-        const centerX = this.x + half;
-        const centerY = this.y + half;
+export class BombTile extends Tile {
+    constructor(x, y, size) {
+        super(x, y, size, 'bomb');
+        this.canPickup = true;
+        this.explosionRadius = 1; // Affects neighboring tiles in a 3x3 area
         
-        return localVerts.map(v => {
-            const cos = Math.cos(this.rotation);
-            const sin = Math.sin(this.rotation);
-            return {
-                x: centerX + v.x * cos - v.y * sin,
-                y: centerY + v.x * sin + v.y * cos
-            };
-        });
+        // Color definitions for bomb tile
+        this.defaultColor = '#212121';      // Dark gray/black
+        this.heldColor = '#424242';         // Lighter gray when held
+        this.projectileColor = '#d32f2f';   // Bright red when thrown
     }
-    // Call this whenever the tile hits a wall or another tile
-    registerBounce() {
-        this.bounceCount++;
+    
+    onDestroy(tileGrid) {
+    // Convert from world coordinates to grid coordinates
+    const gridCol = Math.floor((this.x - tileGrid.startX) / tileGrid.tileSize);
+    const gridRow = Math.floor((this.y - tileGrid.startY) / tileGrid.tileSize);
+    
+    // Iterate through all tiles and check if they're within explosion radius
+    tileGrid.tiles.forEach(tile => {
+        // Calculate the tile's grid position
+        const tileCol = Math.floor((tile.x - tileGrid.startX) / tileGrid.tileSize);
+        const tileRow = Math.floor((tile.y - tileGrid.startY) / tileGrid.tileSize);
         
-        if (this.bounceCount >= this.maxBounces) {
-            this.destroy();
+        // Check if tile is within the explosion radius
+        if (Math.abs(tileCol - gridCol) <= this.explosionRadius &&
+            Math.abs(tileRow - gridRow) <= this.explosionRadius) {
+            
+            // Destroy the tile
+            if (tile.type !== 'empty') {
+                tile.type = 'empty';
+            }
         }
-    }
-
-    destroy() {
-        this.isMoving = false;
-        this.velocity = { x: 0, y: 0 };
-        this.type = 'empty'; // Or trigger a particle effect/animation
-        console.log("Tile shattered from too many bounces!");
-    }
-
-    draw(ctx) {
-        if (this.type === 'empty') return;
-        
-        ctx.save();
-        if (this.type === 'solid') ctx.fillStyle = '#2e7d32';
-        else if (this.type === 'hardened') ctx.fillStyle = '#5e501b';
-        else if (this.type === 'held') ctx.fillStyle = '#66bb6a'; // Lighter green
-        else ctx.fillStyle = '#c62828'; // Projectile or other
-
-        // Drawing slightly smaller than the collision box for a "grid" look
-        ctx.fillRect(this.x + this.gapSize, this.y + this.gapSize, 
-                     this.size - this.gapSize * 2, this.size - this.gapSize * 2);
-        ctx.restore();
+    });
     }
 }

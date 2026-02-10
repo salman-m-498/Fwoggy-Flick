@@ -1,6 +1,7 @@
 import { Tile } from './Tile.js';
-import { GameObject } from '../GameObject.js';
+import { NormalTile } from './NormalTile.js';
 import { HardenedTile } from './HardenedTile.js';
+import { BombTile } from './BombTile.js';
 
 // In TileGrid.js
 export class TileGrid {
@@ -28,18 +29,23 @@ export class TileGrid {
         const rand = Math.random();
         let tile;
         
-        if (rand > 0.7) {
+        if (rand > 0.8) {
             tile = new HardenedTile(
                 this.startX + col * this.tileSize,
                 this.startY + row * this.tileSize,
                 this.tileSize
             );
-        } else {
-            tile = new Tile(
+        } else if (rand > 0.6) {
+            tile = new BombTile(
                 this.startX + col * this.tileSize,
                 this.startY + row * this.tileSize,
-                this.tileSize,
-                'solid'
+                this.tileSize
+            );
+        } else {
+            tile = new NormalTile(
+                this.startX + col * this.tileSize,
+                this.startY + row * this.tileSize,
+                this.tileSize
             );
         }
         

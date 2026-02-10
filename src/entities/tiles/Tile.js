@@ -9,10 +9,21 @@ export class Tile extends GameObject {
         this.gapSize = 2;
         this.velocity = { x: 0, y: 0 }; 
         this.type = type;
-        this.canPickup = true
+        this.canPickup = false; // By default, tiles cannot be picked up
         this.isMoving = false;
         this.bounceCount = 0;
         this.maxBounces = 5;
+        
+        // Color definitions
+        this.defaultColor = '#2e7d32';      // Default green
+        this.heldColor = '#66bb6a';         // Lighter green when held
+        this.projectileColor = '#c62828';   // Red for projectiles
+    }
+    
+    getColor() {
+        if (this.type === 'held') return this.heldColor;
+        if (this.type === 'projectile') return this.projectileColor;
+        return this.defaultColor;
     }
 
     update(deltaSeconds) {
@@ -63,11 +74,8 @@ export class Tile extends GameObject {
         if (this.type === 'empty') return;
         
         ctx.save();
-        if (this.type === 'solid') ctx.fillStyle = '#2e7d32';
-        else if (this.type === 'hardened') ctx.fillStyle = '#5e501b';
-        else if (this.type === 'held') ctx.fillStyle = '#66bb6a'; // Lighter green
-        else ctx.fillStyle = '#c62828'; // Projectile or other
-
+        ctx.fillStyle = this.getColor();
+        
         // Drawing slightly smaller than the collision box for a "grid" look
         ctx.fillRect(this.x + this.gapSize, this.y + this.gapSize, 
                      this.size - this.gapSize * 2, this.size - this.gapSize * 2);

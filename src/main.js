@@ -162,15 +162,30 @@ function checkCollisions() {
             if (wall === 'top' || wall === 'bottom') flyingTile.velocity.y *= -1;
 
             flyingTile.registerBounce();
+            //Trigger bomb explosion on tile hit
+            //if (flyingTile.constructor.name === 'BombTile' && typeof flyingTile.onDestroy === 'function') {
+            //flyingTile.onDestroy(tileGrid);
+            //}
         }
 
         // 2. Check Other Tiles
-        const targets = tileGrid.tiles.filter(t => t.type === 'solid' || t.type === 'hardened');
+        const targets = tileGrid.tiles.filter(t => 
+            t.type === 'solid' || 
+            t.type === 'normal' || 
+            t.type === 'bomb' ||
+            t.type === 'hardened'
+        );
         targets.forEach(otherTile => {
             if (flyingTile === otherTile) return;
 
             if (CollisionUtils.checkAABB(flyingTile, otherTile)) {
-                
+                // Trigger bomb explosion on tile hit
+                if (flyingTile.constructor.name === 'BombTile' && typeof flyingTile.onDestroy === 'function') {
+                    flyingTile.onDestroy(tileGrid);
+                    flyingTile.type = 'empty';
+                    flyingTile.isMoving = false;
+                    return; // Exit early since bomb exploded
+                }
                 if (otherTile.type === 'hardened') {
                     // Logic: Damage the wall, bounce the projectile
                     // This assumes otherTile is an instance of HardenedTile class
@@ -178,6 +193,13 @@ function checkCollisions() {
                         otherTile.onHit(flyingTile);
                         flyingTile.registerBounce();
                     }
+                if (otherTile.type === 'bomb') {
+                    // Logic: trigger other collided bombs
+                    if (otherTile.constructor.name === 'BombTile' && typeof otherTile.onDestroy === 'function') {
+                        otherTile.onDestroy(tileGrid);
+                        flyingTile.registerBounce();
+                    }
+                }
                 } else {
                     // Logic: Standard 'Solid' tile - destroy both
                     flyingTile.type = 'empty';
@@ -221,6 +243,8 @@ function checkCollisions() {
             // CENTRALIZED INTERACTION LOGIC
             switch (closestTile.type) {
                 case 'solid':
+                case 'normal':
+                case 'bomb':
                     // Grabbable: Latch onto it
                     tongue.onCollision(closestTile);
                     break;

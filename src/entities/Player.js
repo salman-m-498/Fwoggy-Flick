@@ -229,10 +229,16 @@ export class Tongue extends GameObject {
 
     onCollision(tile) {
         console.log("Tongue collided with tile at:", tile.x, tile.y);
+        console.log("Tile type:", tile.type);
+        console.log("Tile canPickup:", tile.canPickup);
+        console.log("Tile class:", tile.constructor.name);
+        
         if (tile.canPickup) {
             console.log("Picked up tile!");
             this.attachedTile = tile;
             tile.type = 'held';
+        } else {
+            console.log("Cannot pick up this tile");
         }
         this.state = PLAYERSTATES.RETRACTING;
     }

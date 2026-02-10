@@ -5,6 +5,16 @@ export class HardenedTile extends Tile {
         super(x, y, size, 'hardened');
         this.hp = 2;
         this.canPickup = false; // Cannot be picked up
+        
+        // Color definitions for different HP levels
+        this.fullHealthColor = '#5e501b';   // Dark brown at full health
+        this.damagedColor = '#8d6e63';      // Lighter brown when damaged
+    }
+    
+    getColor() {
+        if (this.hp === 2) return this.fullHealthColor;
+        if (this.hp === 1) return this.damagedColor;
+        return this.defaultColor; // Fallback
     }
 
     onHit(projectile) {
@@ -14,6 +24,7 @@ export class HardenedTile extends Tile {
             this.type = 'empty';
         }
     }
+    
     reflectProjectile(projectile) {
         const dx = (projectile.x + projectile.size / 2) - (this.x + this.size / 2);
         const dy = (projectile.y + projectile.size / 2) - (this.y + this.size / 2);
@@ -23,16 +34,5 @@ export class HardenedTile extends Tile {
         } else {
             projectile.velocity.y *= -1;
         }
-    }
-
-    draw(ctx) {
-        if (this.type === 'empty') return;
-        
-        ctx.save();
-        if (this.hp === 2) ctx.fillStyle = '#5e501b';
-        else if (this.hp === 1) ctx.fillStyle = '#8d6e63';
-        ctx.fillRect(this.x + this.gapSize, this.y + this.gapSize, 
-                     this.size - this.gapSize * 2, this.size - this.gapSize * 2);
-        ctx.restore();
     }
 }
