@@ -107,7 +107,7 @@ const tileGrid = new TileGrid(
 function drawGameWorld() {
     ctx.fillStyle = 'lightblue';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
+
     tileGrid.draw(ctx);
     
     // Draw attached tile on top if it exists
@@ -131,6 +131,7 @@ function drawHUD() {
 function updatePhysics(deltaSeconds) {
     player.update(deltaSeconds);
     tongue.update(deltaSeconds, keysJustPressed['Space']);
+    tileGrid.update(deltaSeconds);
     
     // Update all tiles (for projectiles)
     tileGrid.tiles.forEach(t => t.update(deltaSeconds));

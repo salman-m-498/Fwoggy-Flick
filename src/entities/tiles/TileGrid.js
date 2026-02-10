@@ -1,51 +1,95 @@
 import { Tile } from './Tile.js';
+import { GameObject } from '../GameObject.js';
 import { HardenedTile } from './HardenedTile.js';
 
+// In TileGrid.js
 export class TileGrid {
     constructor(startX, startY, cols, rows, tileSize) {
-        this.tiles = [];
+        this.startX = startX;
+        this.startY = startY; // Track the grid's top position
+        this.cols = cols;
+        this.rows = rows;
         this.tileSize = tileSize;
-
-        for (let row = 0; row < rows; row++) {
-            for (let col = 0; col < cols; col++) {
-                
-                const rand = Math.random();
-                let type = 'solid'; // Default
-                
-                // 30% chance for hardened, and the rest solid:
-                if (rand > 0.7) { 
-                    type = 'hardened';
-                }
-
-                let tile;
-                if (type === 'hardened') {
-                    tile = new HardenedTile(
-                        startX + col * tileSize,
-                        startY + row * tileSize,
-                        tileSize
-                    );
-                } else {
-                    tile = new Tile(
-                        startX + col * tileSize,
-                        startY + row * tileSize,
-                        tileSize,
-                        type
-                    );
-                }
-                
-                this.tiles.push(tile);
+        this.tiles = [];
+        this.scrollSpeed = 1; // pixels per second
+        
+        this.initializeGrid();
+    }
+    
+    initializeGrid() {
+        for (let row = 0; row < this.rows; row++) {
+            for (let col = 0; col < this.cols; col++) {
+                this.addTile(col, row);
             }
         }
     }
-
+    
+    addTile(col, row) {
+        const rand = Math.random();
+        let tile;
+        
+        if (rand > 0.7) {
+            tile = new HardenedTile(
+                this.startX + col * this.tileSize,
+                this.startY + row * this.tileSize,
+                this.tileSize
+            );
+        } else {
+            tile = new Tile(
+                this.startX + col * this.tileSize,
+                this.startY + row * this.tileSize,
+                this.tileSize,
+                'solid'
+            );
+        }
+        
+        this.tiles.push(tile);
+    }
+    
+    update(deltaSeconds) {
+        // Move all tiles down
+        this.startY += this.scrollSpeed * deltaSeconds;
+        
+        this.tiles.forEach(tile => {
+            tile.y += this.scrollSpeed * deltaSeconds;
+        });
+        
+        // Check if we need a new row at the top
+        if (this.startY > this.tileSize) {
+            this.spawnNewRow();
+            this.startY -= this.tileSize; // Reset offset
+        }
+        
+        // Remove tiles that scrolled off the bottom
+        // TODO: Add logic for player damage/game over if tiles reach a certain point
+        this.removeOffscreenTiles();
+    }
+    
+    spawnNewRow() {
+        // Add a new row at the top (above visible area)
+        for (let col = 0; col < this.cols; col++) {
+            this.addTile(col, -1); // Row -1 (above screen)
+        }
+        this.rows++;
+    }
+    
+    removeOffscreenTiles() {
+        const bottomThreshold = 450; // Canvas height + buffer
+        this.tiles = this.tiles.filter(tile => {
+            if (tile.y > bottomThreshold && tile.type !== 'projectile') {
+                // Optional: Trigger damage to player here
+                return false; // Remove tile
+            }
+            return true;
+        });
+    }
+    
     draw(ctx) {
         this.tiles.forEach(tile => tile.draw(ctx));
     }
-
-    getSolidTiles() {
-        return this.tiles.filter(t => t.type === 'solid');
-    }
-    getHardenedTiles() {
-        return this.tiles.filter(t => t.type === 'hardened');
+    
+    getLowestTileY() {
+        // Helper to check if tiles reached the danger zone
+        return Math.max(...this.tiles.map(t => t.y));
     }
 }
