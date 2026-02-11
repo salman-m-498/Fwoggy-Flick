@@ -18,6 +18,66 @@ const GAMEESTATES = {
     GAMEOVER: 'GAMEOVER'
 };
 
+// ============================================
+// SCORING & LEADERBOARD SYSTEM
+// ============================================
+
+let playerScore = 0;
+let bestScore = 0;
+let gameTimer = 0;
+const LEADERBOARD_KEY = 'fwoggy-flick-leaderboard';
+
+// Load leaderboard from localStorage
+function loadLeaderboard() {
+    try {
+        const data = localStorage.getItem(LEADERBOARD_KEY);
+        return data ? JSON.parse(data) : [];
+    } catch (e) {
+        console.error('Error loading leaderboard:', e);
+        return [];
+    }
+}
+
+// Save score to leaderboard
+function saveScoreToLeaderboard(score) {
+    try {
+        const leaderboard = loadLeaderboard();
+        leaderboard.push({
+            score: score,
+            date: new Date().toLocaleDateString(),
+            timestamp: Date.now()
+        });
+        // Sort by score descending
+        leaderboard.sort((a, b) => b.score - a.score);
+        localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(leaderboard));
+    } catch (e) {
+        console.error('Error saving score:', e);
+    }
+}
+
+// Reset game state
+function resetGameState() {
+    player.health = player.maxHealth;
+    player.state = PLAYERSTATES.IDLE;
+    player.canRotate = true;
+    player.rotation = 0;
+    player.frameIndex = 0;
+    player.animTimer = 0;
+    playerScore = 0;
+    gameTimer = 0;
+    
+    // Clear tiles and reset grid
+    tileGrid.tiles = [];
+    tileGrid.startY = 0;
+    tileGrid.rows = Math.floor(canvas.height / 2 / tileSize);
+    tileGrid.initializeGrid();
+    
+    // Reset tongue
+    tongue.state = PLAYERSTATES.IDLE;
+    tongue.length = 0;
+    tongue.attachedTile = null;
+}
+
 const player = new Frog(400, 350);
 
 const tongue = new Tongue(player);
@@ -77,15 +137,36 @@ function drawMenu() {
     ctx.fillStyle = 'white';
     ctx.textAlign = "center";
     ctx.font = '48px Arial';
-    ctx.fillText("Tongue Punch", canvas.width/2, canvas.height/2 - 50);
+    ctx.fillText("Tongue Punch", canvas.width/2, canvas.height/2 - 80);
 
     // Draw Instructions
     ctx.fillStyle = 'white';
     ctx.textAlign = "center";
-    ctx.font = '28px Arial';
-    ctx.fillText("Press SPACE to Start", canvas.width/2, canvas.height/2+150);
+    ctx.font = '20px Arial';
+    ctx.fillText("Press SPACE to Start", canvas.width/2, canvas.height/2 + 20);
+
+    // Draw Leaderboard
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 18px Arial';
+    ctx.textAlign = "center";
+    ctx.fillText("TOP SCORES", canvas.width/2, canvas.height/2 + 60);
+    
+    const leaderboard = loadLeaderboard().slice(0, 5);
+    ctx.fillStyle = 'white';
+    ctx.font = '14px Arial';
+    ctx.textAlign = "center";
+    
+    if (leaderboard.length === 0) {
+        ctx.fillText("No scores yet", canvas.width/2, canvas.height/2 + 90);
+    } else {
+        leaderboard.forEach((entry, idx) => {
+            ctx.fillText(`${idx + 1}. ${entry.score} — ${entry.date}`, canvas.width/2, canvas.height/2 + 85 + (idx * 20));
+        });
+    }
 
     if (keys['Space']) {
+        keysJustPressed['Space'] = false; // Consume the key
+        resetGameState();
         currentState = GAMEESTATES.PLAYING;
     }
 }
@@ -123,15 +204,98 @@ function drawHUD() {
     ctx.fillStyle = 'black';
     // Left Bar: From 0 to the start of the play zone
     ctx.fillRect(0, 0, GAME_CONFIG.leftBound, canvas.height);
+    ctx.fillStyle = 'white';
+    ctx.font = '20px Arial';
+    ctx.textAlign = "left";
+    ctx.fillText(`Health: ${player.health}/${player.maxHealth}`, 20, 30);
+    ctx.fillText(`Score: ${playerScore}`, 20, 60);
     
     // Right Bar: From the end of the play zone to the canvas edge
+    ctx.fillStyle = 'black';
     ctx.fillRect(GAME_CONFIG.rightBound, 0, canvas.width - GAME_CONFIG.rightBound, canvas.height);
+    
+    // Display best score on right bar
+    ctx.fillStyle = 'white';
+    ctx.font = '16px Arial';
+    ctx.textAlign = "right";
+    ctx.fillText(`Best: ${bestScore}`, canvas.width - 20, 30);
+}
+
+function drawGameOverScreen() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = 'black';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw Game Over Text
+    ctx.fillStyle = 'white';
+    ctx.textAlign = "center";
+    ctx.font = '48px Arial';
+    ctx.fillText("GAME OVER!", canvas.width/2, canvas.height/2 - 100);
+
+    // Draw Final Score
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 36px Arial';
+    ctx.fillText(`Score: ${playerScore}`, canvas.width/2, canvas.height/2 - 30);
+    
+    // Update best score
+    if (playerScore > bestScore) {
+        bestScore = playerScore;
+    }
+    
+    // Draw Best Score
+    ctx.fillStyle = 'white';
+    ctx.font = '20px Arial';
+    ctx.fillText(`Best: ${bestScore}`, canvas.width/2, canvas.height/2 + 10);
+
+    // Draw Top 10 Leaderboard
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 16px Arial';
+    ctx.fillText("TOP 10 ALL-TIME", canvas.width/2, canvas.height/2 + 50);
+    
+    const leaderboard = loadLeaderboard().slice(0, 10);
+    ctx.fillStyle = 'white';
+    ctx.font = '12px Arial';
+    ctx.textAlign = "center";
+    
+    leaderboard.forEach((entry, idx) => {
+        const text = `${idx + 1}. ${entry.score} — ${entry.date}`;
+        ctx.fillText(text, canvas.width/2, canvas.height/2 + 65 + (idx * 14));
+    });
+
+    // Draw Instructions
+    ctx.fillStyle = 'white';
+    ctx.font = '20px Arial';
+    ctx.fillText("Press SPACE to return to Menu", canvas.width/2, canvas.height - 40);
+
+    if (keys['Space']) {
+        keysJustPressed['Space'] = false; // Consume the key
+        currentState = GAMEESTATES.MENU;
+    }
 }
 
 function updatePhysics(deltaSeconds) {
+    // Track game time for scoring
+    gameTimer += deltaSeconds;
+    
+    // Award 1 point per 100ms survived
+    const newScore = Math.floor(gameTimer * 10); // 10 points per second = 1 point per 100ms
+    if (newScore > playerScore) {
+        playerScore = newScore;
+    }
+    
     player.update(deltaSeconds);
     tongue.update(deltaSeconds, keysJustPressed['Space']);
     tileGrid.update(deltaSeconds);
+    
+    // Check for tiles that scrolled past player (triggers damage)
+    tileGrid.removeOffscreenTiles(player);
+    
+    // Check if player is dead
+    if (player.state === PLAYERSTATES.DEATH) {
+        saveScoreToLeaderboard(playerScore);
+        currentState = GAMEESTATES.GAMEOVER;
+    }
     
     // Update all tiles (for projectiles)
     tileGrid.tiles.forEach(t => t.update(deltaSeconds));
@@ -179,6 +343,7 @@ function checkCollisions() {
                 // Trigger bomb explosion on tile hit
                 if (flyingTile.constructor.name === 'BombTile' && typeof flyingTile.onDestroy === 'function') {
                     flyingTile.onDestroy(tileGrid);
+                    playerScore += 10; // Award points for bomb destruction
                     flyingTile.type = 'empty';
                     flyingTile.isMoving = false;
                     return; // Exit early since bomb exploded
@@ -186,6 +351,7 @@ function checkCollisions() {
                 // Trigger ice freeze on tile hit
                 if (flyingTile.constructor.name === 'IceTile' && typeof flyingTile.onHit === 'function') {
                     flyingTile.onHit(tileGrid);
+                    playerScore += 10; // Award points for ice destruction
                     flyingTile.type = 'empty';
                     flyingTile.isMoving = false;
                     return; // Exit early since bomb exploded
@@ -201,6 +367,7 @@ function checkCollisions() {
                     // Logic: trigger other collided bombs
                     if (otherTile.constructor.name === 'BombTile' && typeof otherTile.onDestroy === 'function') {
                         otherTile.onDestroy(tileGrid);
+                        playerScore += 10; // Award points for bomb destruction
                         flyingTile.registerBounce();
                     }
                 }
@@ -208,6 +375,7 @@ function checkCollisions() {
                     // Logic: trigger collided ice tile
                     if (otherTile.constructor.name === 'IceTile' && typeof otherTile.onHit === 'function') {
                         otherTile.onHit(tileGrid);
+                        playerScore += 10; // Award points for ice destruction
                         flyingTile.registerBounce();
                     }
                 }
@@ -216,6 +384,7 @@ function checkCollisions() {
                     flyingTile.type = 'empty';
                     flyingTile.isMoving = false;
                     otherTile.type = 'empty';
+                    playerScore += 10; // Award points for tile destruction
                     flyingTile.registerBounce();
                 }
             }
@@ -311,5 +480,8 @@ function gameLoop(timestamp) {
 
     requestAnimationFrame(gameLoop);
 }
+
+// Initialize best score from past sessions
+bestScore = Math.max(...loadLeaderboard().map(entry => entry.score || 0), 0);
 
 gameLoop();

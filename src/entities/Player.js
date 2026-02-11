@@ -4,6 +4,8 @@ import { PLAYERSTATES } from '../constants/States.js';
 export class Frog extends GameObject {
     constructor(x, y) {
         super(x, y);
+        this.health = 3;
+        this.maxHealth = 3;
         this.size = 50;
         this.width = this.size + 10;
         this.height = this.size;
@@ -57,6 +59,22 @@ export class Frog extends GameObject {
         } else if (this.rotation <= this.minRot) {
             this.rotation = this.minRot;
             this.rotDirection = 1;
+        }
+    }
+
+    damage(amount) {
+        this.health -= amount;
+        if (this.health <= 0) {
+            this.health = 0;
+            this.state = PLAYERSTATES.DEATH;
+            this.canRotate = false;
+        }
+    }
+
+    heal(amount) {
+        this.health += amount;
+        if (this.health > this.maxHealth) {
+            this.health = this.maxHealth;
         }
     }
 

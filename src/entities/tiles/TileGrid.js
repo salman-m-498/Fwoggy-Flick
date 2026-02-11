@@ -62,7 +62,7 @@ export class TileGrid {
         this.tiles.push(tile);
     }
     
-    update(deltaSeconds) {
+    update(deltaSeconds, player) {
         // Handle freeze timer
         if (this.freezeTimeRemaining > 0) {
             this.freezeTimeRemaining -= deltaSeconds;
@@ -86,10 +86,6 @@ export class TileGrid {
             this.spawnNewRow();
             this.startY -= this.tileSize; // Reset offset
         }
-        
-        // Remove tiles that scrolled off the bottom
-        // TODO: Add logic for player damage/game over if tiles reach a certain point
-        this.removeOffscreenTiles();
     }
     
     spawnNewRow() {
@@ -104,11 +100,13 @@ export class TileGrid {
         this.tiles.forEach(tile => tile.draw(ctx));
     }
     
-    removeOffscreenTiles() {
+    removeOffscreenTiles(player) {
         const bottomThreshold = 450; // Canvas height + buffer
         this.tiles = this.tiles.filter(tile => {
             if (tile.y > bottomThreshold && tile.type !== 'projectile') {
-                // Optional: Trigger damage to player here
+                if (player) {
+                    player.damage(1); // Damage the player
+                }
                 return false; // Remove tile
             }
             return true;
