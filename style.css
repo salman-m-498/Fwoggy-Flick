@@ -117,6 +117,13 @@ canvas {
     border-radius: 8px;
     max-width: 100%;
     height: auto;
+    cursor: pointer;
+}
+
+canvas:focus {
+    outline: none;
+    border-color: var(--primary-green);
+    box-shadow: 0 8px 32px var(--shadow-hover), 0 0 20px rgba(46, 204, 113, 0.5);
 }
 
 /* ===== How to Play Section ===== */

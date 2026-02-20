@@ -17,6 +17,9 @@ import {
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
+// Auto-focus canvas for immediate keyboard input
+canvas.focus();
+
 const GAME_CONFIG = {
     playWidth: 500, // The width of the actual game area
     get leftBound() { return (canvas.width - this.playWidth) / 2; },
@@ -87,10 +90,20 @@ let lastTime = 0;
 
 // Listen for keyboard input
 window.addEventListener('keydown', e => {
+    // Prevent default browser behavior for game controls
+    if (e.code === 'Space' || e.code === 'Escape' || e.code === 'KeyP') {
+        e.preventDefault();
+    }
     if (!keys[e.code]) keysJustPressed[e.code] = true;
     keys[e.code] = true;
 });
-window.addEventListener('keyup', e => keys[e.code] = false);
+window.addEventListener('keyup', e => {
+    // Prevent default browser behavior for game controls
+    if (e.code === 'Space' || e.code === 'Escape' || e.code === 'KeyP') {
+        e.preventDefault();
+    }
+    keys[e.code] = false;
+});
 
 function update() {
     // Placeholder for future updates
