@@ -2,14 +2,206 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Simple JS Game Loop</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fwoggy-Flick | Physics-Based Tile Hookshot Game</title>
+    <meta name="description" content="A vanilla JavaScript physics-based tile game featuring custom SAT collision detection, finite state machines, and procedural content generation.">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div id="game-container">
-        <canvas id="gameCanvas" width="800" height="400"></canvas>
-        <p>Use <b>Arrow Keys</b> to move. Avoid the edges!</p>
-    </div>
+    <header class="hero">
+        <div class="hero-content">
+            <h1 class="title">🐸 Fwoggy-Flick</h1>
+            <p class="subtitle">A Physics-Based Tile Hookshot Game</p>
+            <p class="tagline">Grab tiles with your tongue, launch them as projectiles, and survive the endless cascade!</p>
+        </div>
+    </header>
+
+    <main>
+        <!-- Game Demo Section -->
+        <section class="game-section">
+            <div class="container">
+                <h2>Play Demo</h2>
+                <div class="game-wrapper">
+                    <canvas id="gameCanvas" width="800" height="400"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- How to Play Section -->
+        <section class="how-to-play">
+            <div class="container">
+                <h2>How to Play</h2>
+                
+                <div class="content-grid">
+                    <div class="controls-card">
+                        <h3>🎮 Controls</h3>
+                        <ul class="controls-list">
+                            <li><kbd>SPACEBAR</kbd> Extend tongue / Shoot tile / Retract</li>
+                            <li><kbd>P</kbd> or <kbd>ESC</kbd> Pause game</li>
+                            <li><strong>Auto-Aim:</strong> Frog rotates automatically (-70° to +70°)</li>
+                        </ul>
+                    </div>
+
+                    <div class="mechanics-card">
+                        <h3>🎯 Game Mechanics</h3>
+                        <ol class="mechanics-list">
+                            <li><strong>Extend:</strong> Shoot tongue upward to grab tiles</li>
+                            <li><strong>Grab:</strong> Tongue collides with and captures tiles</li>
+                            <li><strong>Retract:</strong> Pull tile back to your mouth</li>
+                            <li><strong>Load:</strong> Hold tile ready to launch</li>
+                            <li><strong>Launch:</strong> Fire tile as projectile to destroy others</li>
+                        </ol>
+                    </div>
+                </div>
+
+                <div class="tiles-section">
+                    <h3>🎲 Tile Types</h3>
+                    <div class="tiles-grid">
+                        <div class="tile-card tile-normal">
+                            <div class="tile-icon">🟢</div>
+                            <h4>Normal Tile</h4>
+                            <p>Basic tile • Grabbable • Destroyed on hit</p>
+                        </div>
+                        <div class="tile-card tile-hardened">
+                            <div class="tile-icon">🟤</div>
+                            <h4>Hardened Tile</h4>
+                            <p>2 HP • Reflects projectiles • Cannot be grabbed</p>
+                        </div>
+                        <div class="tile-card tile-bomb">
+                            <div class="tile-icon">💣</div>
+                            <h4>Bomb Tile</h4>
+                            <p>Explodes in 3×3 area • Chain reactions</p>
+                        </div>
+                        <div class="tile-card tile-ice">
+                            <div class="tile-icon">🧊</div>
+                            <h4>Ice Tile</h4>
+                            <p>Freezes grid scrolling • 5 second duration</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="objective-card">
+                    <h3>🏆 Objective</h3>
+                    <p>Survive as long as possible! The grid continuously scrolls down at increasing speed. Destroy tiles before they reach the bottom and damage you (3 HP). Earn <strong>10 points/second</strong> survived + <strong>10 points per tile</strong> destroyed. Create chain reactions for massive combos!</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- About the Project Section -->
+        <section class="about-section">
+            <div class="container">
+                <h2>About the Project</h2>
+                
+                <div class="project-overview">
+                    <p class="lead">Fwoggy-Flick is a tile-based physics game built entirely from scratch using <strong>vanilla JavaScript</strong> and the <strong>Canvas API</strong>—no game engines, no physics libraries. Every system, from collision detection to state management, was hand-implemented to deepen understanding of game development fundamentals.</p>
+                </div>
+
+                <h3>🔧 Technical Highlights</h3>
+                <div class="tech-grid">
+                    <div class="tech-card">
+                        <div class="tech-icon">⚙️</div>
+                        <h4>Custom Physics Engine</h4>
+                        <p>Hand-implemented collision detection using the <strong>Separating Axis Theorem (SAT)</strong> for pixel-perfect collision between rotating convex polygons. Two-phase detection system: AABB broad-phase for performance, SAT narrow-phase for accuracy.</p>
+                    </div>
+
+                    <div class="tech-card">
+                        <div class="tech-icon">🎭</div>
+                        <h4>Finite State Machine (FSM)</h4>
+                        <p>Clean state management pattern for both Player (IDLE, EXTENDING, RETRACTING, LOADED, DEATH) and GameManager (MENU, PLAYING, PAUSED, GAMEOVER). Prevents edge cases and enables scalable behavior control.</p>
+                    </div>
+
+                    <div class="tech-card">
+                        <div class="tech-icon">🏗️</div>
+                        <h4>Object-Oriented Architecture</h4>
+                        <p>Inheritance hierarchy with base <code>GameObject</code> class providing shared collision geometry. Polymorphic <code>onHit()</code> and <code>onDestroy()</code> methods enable tile-specific behaviors. Composition over inheritance where appropriate.</p>
+                    </div>
+
+                    <div class="tech-card">
+                        <div class="tech-icon">🎨</div>
+                        <h4>Sprite System & Rendering</h4>
+                        <p>JSON atlas-based sprite rendering with frame animation support. Custom game loop using <code>requestAnimationFrame</code> with fixed deltaTime for time-independent physics. Transform matrix operations for rotation and translation.</p>
+                    </div>
+
+                    <div class="tech-card">
+                        <div class="tech-icon">🔀</div>
+                        <h4>Procedural Content Generation</h4>
+                        <p>Weighted random tile spawning system with infinite scrolling grid. Dynamic difficulty scaling as speed increases over time. Efficient tile recycling prevents memory leaks during extended play sessions.</p>
+                    </div>
+
+                    <div class="tech-card">
+                        <div class="tech-icon">💾</div>
+                        <h4>Data Persistence</h4>
+                        <p>LocalStorage integration for leaderboard system with score tracking and session management. Maintains best scores across sessions for player retention and progression.</p>
+                    </div>
+                </div>
+
+                <h3>📚 Learning Outcomes</h3>
+                <div class="learning-outcomes">
+                    <div class="outcome-category">
+                        <h4>Computer Science Fundamentals</h4>
+                        <ul>
+                            <li><strong>Algorithms:</strong> Implemented SAT collision detection from academic resources</li>
+                            <li><strong>Computational Geometry:</strong> Vector mathematics, dot products, polygon projections</li>
+                            <li><strong>Data Structures:</strong> Grid-based spatial management, object pooling concepts</li>
+                            <li><strong>Performance Optimization:</strong> Two-phase collision detection, early exit strategies</li>
+                        </ul>
+                    </div>
+
+                    <div class="outcome-category">
+                        <h4>Software Engineering</h4>
+                        <ul>
+                            <li><strong>Design Patterns:</strong> Finite State Machine, Strategy Pattern (polymorphic behaviors), Module Pattern</li>
+                            <li><strong>Clean Code:</strong> Separation of concerns, single responsibility principle, consistent naming</li>
+                            <li><strong>Architecture:</strong> OOP with inheritance hierarchies, composition for complex behaviors</li>
+                            <li><strong>Modularity:</strong> ES6 modules with clear dependencies and exports</li>
+                        </ul>
+                    </div>
+
+                    <div class="outcome-category">
+                        <h4>Game Development</h4>
+                        <ul>
+                            <li><strong>Game Loop Architecture:</strong> Update/render separation, fixed timestep physics</li>
+                            <li><strong>Physics Simulation:</strong> Velocity-based movement, projectile trajectories, bounce mechanics</li>
+                            <li><strong>State Management:</strong> Preventing impossible transitions and edge cases</li>
+                            <li><strong>Canvas Rendering:</strong> Low-level 2D graphics programming, transform matrices</li>
+                        </ul>
+                    </div>
+
+                    <div class="outcome-category">
+                        <h4>Problem-Solving & Self-Learning</h4>
+                        <ul>
+                            <li><strong>Research Skills:</strong> Studied SAT algorithm from external resources and academic papers</li>
+                            <li><strong>Mathematical Implementation:</strong> Translated abstract math concepts into working code</li>
+                            <li><strong>Debugging Complex Systems:</strong> Debugged rotation, collision, and physics interactions</li>
+                            <li><strong>Vanilla JS Mastery:</strong> Built complete game without framework dependencies</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <h3>✨ Key Features</h3>
+                <ul class="features-list">
+                    <li><strong>Pixel-Perfect Collision:</strong> SAT algorithm handles arbitrary convex polygons with rotation</li>
+                    <li><strong>Physics-Based Projectiles:</strong> Velocity vectors, bounce mechanics with degradation (max 5 bounces)</li>
+                    <li><strong>Chain Reaction System:</strong> Projectiles destroy multiple tiles, bombs create 3×3 explosions</li>
+                    <li><strong>Dynamic Difficulty:</strong> Grid scroll speed increases progressively as player survives</li>
+                    <li><strong>Leaderboard System:</strong> Persistent high scores with localStorage API</li>
+                    <li><strong>Responsive State Management:</strong> Pause/resume, death handling, game state transitions</li>
+                </ul>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>Built with vanilla JavaScript & Canvas API • No game engines, no physics libraries</p>
+            <p class="footer-links">
+                <a href="https://github.com/salman-m-498/Fwoggy-Flick" target="_blank" rel="noopener noreferrer">
+                    View on GitHub →
+                </a>
+            </p>
+        </div>
+    </footer>
+
     <script type="module" src="./src/main.js"></script>
 </body>
 </html>
