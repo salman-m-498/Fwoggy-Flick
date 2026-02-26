@@ -12,6 +12,33 @@ export class BombTile extends Tile {
         this.projectileColor = '#d32f2f';   // Bright red when thrown
     }
     
+    draw(ctx) {
+        if (this.type === 'empty') return;
+        
+        ctx.save();
+        
+        const x = this.x + this.gapSize;
+        const y = this.y + this.gapSize;
+        const size = this.size - this.gapSize * 2;
+        
+        // Draw rounded tile
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 1;
+        ctx.fillStyle = this.getColor();
+        ctx.roundRect(x, y, size, size, 4);
+        ctx.fill();
+        ctx.stroke();
+        
+        // Draw bomb emoji
+        ctx.fillStyle = '#FF4444';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = `${size * 0.6}px Arial`;
+        ctx.fillText('💣', x + size / 2, y + size / 2);
+        
+        ctx.restore();
+    }
+    
     onDestroy(tileGrid) {
     // Convert from world coordinates to grid coordinates
     const gridCol = Math.floor((this.x - tileGrid.startX) / tileGrid.tileSize);

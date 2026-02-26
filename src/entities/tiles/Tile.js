@@ -74,11 +74,20 @@ export class Tile extends GameObject {
         if (this.type === 'empty') return;
         
         ctx.save();
+        
+        const x = this.x + this.gapSize;
+        const y = this.y + this.gapSize;
+        const size = this.size - this.gapSize * 2;
+        
+        // Draw rounded rectangle with 1px outline
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 1;
         ctx.fillStyle = this.getColor();
         
-        // Drawing slightly smaller than the collision box for a "grid" look
-        ctx.fillRect(this.x + this.gapSize, this.y + this.gapSize, 
-                     this.size - this.gapSize * 2, this.size - this.gapSize * 2);
+        ctx.roundRect(x, y, size, size, 4);
+        ctx.fill();
+        ctx.stroke();
+        
         ctx.restore();
     }
 }

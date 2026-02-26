@@ -1,4 +1,5 @@
 import { Tile } from './Tile.js';
+import { ArcadeRenderer } from '../../rendering/ArcadeRenderer.js';
 
 export class HardenedTile extends Tile {
     constructor(x, y, size) {
@@ -34,5 +35,32 @@ export class HardenedTile extends Tile {
         } else {
             projectile.velocity.y *= -1;
         }
+    }
+    
+    draw(ctx) {
+        if (this.type === 'empty') return;
+        
+        ctx.save();
+        
+        const x = this.x + this.gapSize;
+        const y = this.y + this.gapSize;
+        const size = this.size - this.gapSize * 2;
+        
+        // Draw rounded tile
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 1;
+        ctx.fillStyle = this.getColor();
+        ctx.roundRect(x, y, size, size, 4);
+        ctx.fill();
+        ctx.stroke();
+        
+        // Draw brick/wall emoji
+        ctx.fillStyle = '#000000';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = `${size * 0.6}px Arial`;
+        ctx.fillText('\ud83e\uddf1', x + size / 2, y + size / 2);
+        
+        ctx.restore();
     }
 }

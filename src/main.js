@@ -1,6 +1,7 @@
 import { PLAYERSTATES } from './constants/States.js';
 import { Frog, Tongue } from './entities/Player.js';
 import { TileGrid } from './entities/tiles/index.js';
+import { HeartDisplay } from './entities/HeartDisplay.js';
 import { CollisionUtils } from './Collision.js';
 import { GameManager, GAMESTATES } from './GameManager.js';
 import {
@@ -14,6 +15,37 @@ import {
     updateBestScore,
     updateScore
 } from './Score.js';
+
+// Polyfill for roundRect if not supported
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+    CanvasRenderingContext2D.prototype.roundRect = function(x, y, width, height, radius) {
+        if (typeof radius === 'undefined') {
+            radius = 5;
+        }
+        if (typeof radius === 'number') {
+            radius = {tl: radius, tr: radius, br: radius, bl: radius};
+        } else {
+            const defaultRadius = {tl: 0, tr: 0, br: 0, bl: 0};
+            for (let side in defaultRadius) {
+                radius[side] = radius[side] || defaultRadius[side];
+            }
+        }
+        
+        this.beginPath();
+        this.moveTo(x + radius.tl, y);
+        this.lineTo(x + width - radius.tr, y);
+        this.quadraticCurveTo(x + width, y, x + width, y + radius.tr);
+        this.lineTo(x + width, y + height - radius.br);
+        this.quadraticCurveTo(x + width, y + height, x + width - radius.br, y + height);
+        this.lineTo(x + radius.bl, y + height);
+        this.quadraticCurveTo(x, y + height, x, y + height - radius.bl);
+        this.lineTo(x, y + radius.tl);
+        this.quadraticCurveTo(x, y, x + radius.tl, y);
+        this.closePath();
+        return this;
+    };
+}
+
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
@@ -34,12 +66,18 @@ function resetGameState() {
     player.rotation = 0;
     player.frameIndex = 0;
     player.animTimer = 0;
+    player.hasShield = false;
+    player.shieldTime = 0;
+    player.multishotCount = 0;
+    player.damageFlashTime = 0;
     resetScore();
     
     // Clear tiles and reset grid
     tileGrid.tiles = [];
     tileGrid.startY = 0;
     tileGrid.rows = Math.floor(canvas.height / 2 / tileSize);
+    tileGrid.scrollSpeed = 1;
+    tileGrid.originalScrollSpeed = 1;
     tileGrid.initializeGrid();
     
     // Reset tongue
@@ -51,6 +89,8 @@ function resetGameState() {
 const player = new Frog(400, 350);
 
 const tongue = new Tongue(player);
+
+const heartDisplay = new HeartDisplay(20, 30, 3); // x, y, maxHearts
 
 const images = {};
 let frogAtlas = null;
@@ -213,11 +253,14 @@ function drawHUD() {
     ctx.fillStyle = 'black';
     // Left Bar: From 0 to the start of the play zone
     ctx.fillRect(0, 0, GAME_CONFIG.leftBound, canvas.height);
+    
+    // Draw hearts using HeartDisplay
+    heartDisplay.draw(ctx, player.health);
+    
     ctx.fillStyle = 'white';
     ctx.font = '20px Arial';
     ctx.textAlign = "left";
-    ctx.fillText(`Health: ${player.health}/${player.maxHealth}`, 20, 30);
-    ctx.fillText(`Score: ${getPlayerScore()}`, 20, 60);
+    ctx.fillText(`Score: ${getPlayerScore()}`, 20, 100);
     
     // Right Bar: From the end of the play zone to the canvas edge
     ctx.fillStyle = 'black';
@@ -228,6 +271,16 @@ function drawHUD() {
     ctx.font = '16px Arial';
     ctx.textAlign = "right";
     ctx.fillText(`Best: ${getBestScore()}`, canvas.width - 20, 30);
+    
+    // Display powerup status
+    if (player.hasShield) {
+        ctx.fillStyle = '#FFD700';
+        ctx.fillText(`Shield: ${player.shieldTime.toFixed(1)}s`, canvas.width - 20, 60);
+    }
+    if (player.multishotCount > 0) {
+        ctx.fillStyle = '#FF44FF';
+        ctx.fillText(`Multishot: ${player.multishotCount}`, canvas.width - 20, 90);
+    }
 }
 
 function drawGameOverScreen() {
@@ -284,10 +337,38 @@ function updatePhysics(deltaSeconds) {
     
     player.update(deltaSeconds);
     tongue.update(deltaSeconds, keysJustPressed['Space']);
+    
+    // Pass current score to grid for difficulty scaling
+    tileGrid.setScore(getPlayerScore());
+    
+    // Add dynamic scroll speed scaling (gradual increase)
+    const baseSpeed = 1;
+    const speedIncrease = Math.min(getPlayerScore() / 100, 20) * 0.1; // Max 2x at score 2000
+    const targetSpeed = baseSpeed + speedIncrease;
+    
+    // Only update if not frozen
+    if (tileGrid.freezeTimeRemaining <= 0 && tileGrid.scrollSpeed !== 0) {
+        tileGrid.originalScrollSpeed = targetSpeed;
+        tileGrid.scrollSpeed = targetSpeed;
+    }
+    
     tileGrid.update(deltaSeconds);
+    
+    // Check for HeartTiles that reached player zone (bottom)
+    const playerZoneY = 420; // Where player can collect hearts
+    tileGrid.tiles.forEach(tile => {
+        if (tile.constructor.name === 'HeartTile' && tile.y >= playerZoneY && !tile.collected) {
+            if (tile.onPlayerContact && tile.onPlayerContact(player)) {
+                console.log('Player collected heart!');
+            }
+        }
+    });
     
     // Check for tiles that scrolled past player (triggers damage)
     tileGrid.removeOffscreenTiles(player);
+    
+    // Update heart display
+    heartDisplay.update(deltaSeconds);
     
     // Check if player is dead
     if (player.state === PLAYERSTATES.DEATH) {
@@ -332,59 +413,102 @@ function checkCollisions() {
             t.type === 'normal' || 
             t.type === 'bomb' ||
             t.type === 'hardened'||
-            t.type === 'ice'
+            t.type === 'ice' ||
+            t.type === 'spike' ||
+            t.type === 'poison' ||
+            t.type === 'shield' ||
+            t.type === 'multishot' ||
+            t.type === 'slow'
         );
         targets.forEach(otherTile => {
             if (flyingTile === otherTile) return;
 
             if (CollisionUtils.checkAABB(flyingTile, otherTile)) {
-                // Trigger bomb explosion on tile hit
+                const tileName = otherTile.constructor.name;
+                
+                // Handle BombTile projectile
                 if (flyingTile.constructor.name === 'BombTile' && typeof flyingTile.onDestroy === 'function') {
                     flyingTile.onDestroy(tileGrid);
-                    addScore(10); // Award points for bomb destruction
+                    addScore(10);
                     flyingTile.type = 'empty';
                     flyingTile.isMoving = false;
-                    return; // Exit early since bomb exploded
+                    return;
                 }
-                // Trigger ice freeze on tile hit
-                if (flyingTile.constructor.name === 'IceTile' && typeof flyingTile.onHit === 'function') {
+                
+                // Handle IceTile/SlowTile projectile
+                if ((flyingTile.constructor.name === 'IceTile' || flyingTile.constructor.name === 'SlowTile') 
+                    && typeof flyingTile.onHit === 'function') {
                     flyingTile.onHit(tileGrid);
-                    addScore(10); // Award points for ice destruction
+                    addScore(10);
                     flyingTile.type = 'empty';
                     flyingTile.isMoving = false;
-                    return; // Exit early since bomb exploded
+                    return;
                 }
-                if (otherTile.type === 'hardened') {
-                    // Logic: Damage the wall, bounce the projectile
-                    // This assumes otherTile is an instance of HardenedTile class
+                
+                // Handle hitting different tile types
+                if (tileName === 'SpikeTile') {
+                    // SpikeTile is very tough and damages player when hit
+                    if (otherTile.onHit) {
+                        otherTile.onHit(flyingTile);
+                    }
+                    // Check if spike is destroyed
+                    if (otherTile.health <= 0) {
+                        otherTile.type = 'empty';
+                        addScore(30); // Bonus for destroying spike
+                    }
+                    // Damage player
+                    player.damage(1);
+                    flyingTile.type = 'empty';
+                    flyingTile.isMoving = false;
+                    return;
+                }
+                
+                if (tileName === 'HardenedTile') {
                     if (typeof otherTile.onHit === 'function') {
                         otherTile.onHit(flyingTile);
                         flyingTile.registerBounce();
                     }
-                if (otherTile.type === 'bomb') {
-                    // Logic: trigger other collided bombs
-                    if (otherTile.constructor.name === 'BombTile' && typeof otherTile.onDestroy === 'function') {
-                        otherTile.onDestroy(tileGrid);
-                        addScore(10); // Award points for bomb destruction
-                        flyingTile.registerBounce();
-                    }
+                    return;
                 }
-                if (otherTile.type === 'ice') {
-                    // Logic: trigger collided ice tile
-                    if (otherTile.constructor.name === 'IceTile' && typeof otherTile.onHit === 'function') {
-                        otherTile.onHit(tileGrid);
-                        addScore(10); // Award points for ice destruction
-                        flyingTile.registerBounce();
-                    }
+                
+                if (tileName === 'BombTile' && typeof otherTile.onDestroy === 'function') {
+                    otherTile.onDestroy(tileGrid);
+                    addScore(10);
+                    flyingTile.registerBounce();
+                    return;
                 }
-                } else {
-                    // Logic: Standard 'Solid' tile - destroy both
+                
+                if ((tileName === 'IceTile' || tileName === 'SlowTile') && typeof otherTile.onHit === 'function') {
+                    otherTile.onHit(tileGrid);
+                    addScore(10);
+                    flyingTile.registerBounce();
+                    return;
+                }
+                
+                if (tileName === 'ShieldTile' && typeof otherTile.onDestroy === 'function') {
+                    otherTile.onDestroy(player);
+                    otherTile.type = 'empty';
+                    addScore(15);
                     flyingTile.type = 'empty';
                     flyingTile.isMoving = false;
-                    otherTile.type = 'empty';
-                    addScore(10); // Award points for tile destruction
-                    flyingTile.registerBounce();
+                    return;
                 }
+                
+                if (tileName === 'MultishotTile' && typeof otherTile.onDestroy === 'function') {
+                    otherTile.onDestroy(player);
+                    otherTile.type = 'empty';
+                    addScore(15);
+                    flyingTile.type = 'empty';
+                    flyingTile.isMoving = false;
+                    return;
+                }
+                
+                // Standard destruction (normal, poison, etc.)
+                flyingTile.type = 'empty';
+                flyingTile.isMoving = false;
+                otherTile.type = 'empty';
+                addScore(10);
+                flyingTile.registerBounce();
             }
         });
     });
@@ -392,7 +516,8 @@ function checkCollisions() {
     const candidates = tileGrid.tiles.filter(t => 
         t.type !== 'empty' && 
         t.type !== 'held' && 
-        t.type !== 'projectile'
+        t.type !== 'projectile' &&
+        t.type !== 'heart' // Hearts don't interact with tongue
     );
 
     if(tongue.state === PLAYERSTATES.EXTENDING && tongue.length > 0) {
@@ -418,25 +543,36 @@ function checkCollisions() {
         }
         
         if (closestTile) {
-            // CENTRALIZED INTERACTION LOGIC
-            switch (closestTile.type) {
-                case 'solid':
-                case 'normal':
-                case 'bomb':
-                case 'ice':
-                    // Grabbable: Latch onto it
-                    tongue.onCollision(closestTile);
-                    break;
-                
-                case 'hardened':
-                    // Not Grabbable: "Clink" off and return
-                    tongue.state = PLAYERSTATES.RETRACTING;
-                    break;
-
-                default:
-                    // Safety fallback
-                    tongue.state = PLAYERSTATES.RETRACTING;
-                    break;
+            // Check if tile is grabbable
+            if (closestTile.canPickup !== undefined && closestTile.canPickup) {
+                // Check for PoisonTile danger
+                if (closestTile.constructor.name === 'PoisonTile' && closestTile.isDangerous) {
+                    player.damage(1);
+                    console.log('Grabbed poison tile! Took damage.');
+                }
+                // Grab the tile
+                tongue.onCollision(closestTile);
+            } else if (closestTile.type === 'hardened' || closestTile.type === 'spike') {
+                // Not grabbable: bounce off
+                tongue.state = PLAYERSTATES.RETRACTING;
+            } else {
+                // Default: try to grab if it's a known grabbable type
+                switch (closestTile.type) {
+                    case 'solid':
+                    case 'normal':
+                    case 'bomb':
+                    case 'ice':
+                    case 'slow':
+                    case 'poison':
+                    case 'shield':
+                    case 'multishot':
+                        tongue.onCollision(closestTile);
+                        break;
+                    
+                    default:
+                        tongue.state = PLAYERSTATES.RETRACTING;
+                        break;
+                }
             }
         }
     }

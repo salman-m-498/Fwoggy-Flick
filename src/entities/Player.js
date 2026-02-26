@@ -23,6 +23,12 @@ export class Frog extends GameObject {
             [PLAYERSTATES.DEATH]: { frames: ["fwoggie dead.png"], loop: false }
         };
         this.state = PLAYERSTATES.IDLE;
+        
+        // Powerup states
+        this.hasShield = false;
+        this.shieldTime = 0;
+        this.multishotCount = 0;
+        this.damageFlashTime = 0;
     }
 
     getVertices() {
@@ -49,6 +55,20 @@ export class Frog extends GameObject {
             }
         }
         
+        // Update shield timer
+        if (this.hasShield && this.shieldTime > 0) {
+            this.shieldTime -= deltaSeconds;
+            if (this.shieldTime <= 0) {
+                this.hasShield = false;
+                this.shieldTime = 0;
+            }
+        }
+        
+        // Update damage flash
+        if (this.damageFlashTime > 0) {
+            this.damageFlashTime -= deltaSeconds;
+        }
+        
         if (!this.canRotate) return;
 
         this.rotation += this.rotDirection * this.speed * deltaSeconds;
@@ -63,7 +83,14 @@ export class Frog extends GameObject {
     }
 
     damage(amount) {
+        // Ignore damage if shielded
+        if (this.hasShield) {
+            return;
+        }
+        
         this.health -= amount;
+        this.damageFlashTime = 0.3; // Flash for 300ms
+        
         if (this.health <= 0) {
             this.health = 0;
             this.state = PLAYERSTATES.DEATH;
@@ -82,6 +109,26 @@ export class Frog extends GameObject {
         ctx.save();
         ctx.translate(this.x, this.y);
         ctx.rotate(this.rotation);
+
+        // Draw shield effect
+        if (this.hasShield) {
+            const pulse = Math.sin(Date.now() / 100) * 0.1 + 0.9;
+            ctx.strokeStyle = '#FFD700';
+            ctx.lineWidth = 3;
+            ctx.globalAlpha = pulse;
+            ctx.beginPath();
+            ctx.arc(0, 0, this.size * 0.7, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+        }
+        
+        // Flash red when damaged
+        if (this.damageFlashTime > 0) {
+            ctx.globalAlpha = 0.5;
+            ctx.fillStyle = 'red';
+            ctx.fillRect(-this.size / 2, -this.size / 2, this.size, this.size);
+            ctx.globalAlpha = 1;
+        }
 
         if (images.frogSpritesheet && atlas) {
         const anim = this.animations[this.state];
@@ -223,8 +270,13 @@ export class Tongue extends GameObject {
         this.attachedTile.isMoving = true;
         this.attachedTile.type = 'projectile';
         
+        // Store reference for multishot
+        const shotTile = this.attachedTile;
         this.attachedTile = null;
         this.state = PLAYERSTATES.IDLE;
+        
+        // Return the shot tile for multishot handling
+        return shotTile;
     }
 
     draw(ctx) {
