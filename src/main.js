@@ -407,18 +407,12 @@ function checkCollisions() {
             flyingTile.registerBounce();
         }
 
-        // 2. Check Other Tiles
+        // 2. Check Other Tiles (exclude empty, projectile, and held tiles)
         const targets = tileGrid.tiles.filter(t => 
-            t.type === 'solid' || 
-            t.type === 'normal' || 
-            t.type === 'bomb' ||
-            t.type === 'hardened'||
-            t.type === 'ice' ||
-            t.type === 'spike' ||
-            t.type === 'poison' ||
-            t.type === 'shield' ||
-            t.type === 'multishot' ||
-            t.type === 'slow'
+            t !== flyingTile &&
+            t.type !== 'empty' && 
+            t.type !== 'projectile' && 
+            t.type !== 'held'
         );
         targets.forEach(otherTile => {
             if (flyingTile === otherTile) return;
@@ -543,8 +537,8 @@ function checkCollisions() {
         }
         
         if (closestTile) {
-            // Check if tile is grabbable
-            if (closestTile.canPickup !== undefined && closestTile.canPickup) {
+            // Check if tile is grabbable using canPickup property
+            if (closestTile.canPickup) {
                 // Check for PoisonTile danger
                 if (closestTile.constructor.name === 'PoisonTile' && closestTile.isDangerous) {
                     player.damage(1);
@@ -552,27 +546,9 @@ function checkCollisions() {
                 }
                 // Grab the tile
                 tongue.onCollision(closestTile);
-            } else if (closestTile.type === 'hardened' || closestTile.type === 'spike') {
+            } else {
                 // Not grabbable: bounce off
                 tongue.state = PLAYERSTATES.RETRACTING;
-            } else {
-                // Default: try to grab if it's a known grabbable type
-                switch (closestTile.type) {
-                    case 'solid':
-                    case 'normal':
-                    case 'bomb':
-                    case 'ice':
-                    case 'slow':
-                    case 'poison':
-                    case 'shield':
-                    case 'multishot':
-                        tongue.onCollision(closestTile);
-                        break;
-                    
-                    default:
-                        tongue.state = PLAYERSTATES.RETRACTING;
-                        break;
-                }
             }
         }
     }
