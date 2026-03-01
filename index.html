@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Fwoggy-Flick | Physics-Based Tile Hookshot Game</title>
     <meta name="description" content="A vanilla JavaScript physics-based tile game featuring custom SAT collision detection, finite state machines, and procedural content generation.">
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -22,7 +23,19 @@
             <div class="container">
                 <h2>Play Demo</h2>
                 <div class="game-wrapper">
-                    <canvas id="gameCanvas" width="800" height="400" tabindex="0"></canvas>
+                    <div class="canvas-container">
+                        <canvas id="gameCanvas" width="800" height="400" tabindex="0"></canvas>
+                        <button id="fullscreenBtn" title="Toggle Fullscreen" aria-label="Toggle Fullscreen">
+                            <svg class="icon-expand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square">
+                                <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
+                                <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+                            </svg>
+                            <svg class="icon-compress" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square">
+                                <polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/>
+                                <line x1="10" y1="14" x2="3" y2="21"/><line x1="21" y1="3" x2="14" y2="10"/>
+                            </svg>
+                        </button>
+                    </div>
                 </div>
             </div>
         </section>

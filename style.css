@@ -110,6 +110,13 @@ section h4 {
     margin-top: 2rem;
 }
 
+/* Canvas container holds the canvas + fullscreen button together */
+.canvas-container {
+    position: relative;
+    display: inline-block;
+    line-height: 0;
+}
+
 canvas {
     background-color: #ecf0f1;
     border: 4px solid var(--border-color);
@@ -118,12 +125,86 @@ canvas {
     max-width: 100%;
     height: auto;
     cursor: pointer;
+    display: block;
 }
 
 canvas:focus {
     outline: none;
     border-color: var(--primary-green);
     box-shadow: 0 8px 32px var(--shadow-hover), 0 0 20px rgba(46, 204, 113, 0.5);
+}
+
+/* ── Fullscreen button ── */
+#fullscreenBtn {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    background: rgba(12, 12, 12, 0.82);
+    border: 1px solid #1e3a1e;
+    border-radius: 4px;
+    color: #44ff88;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, box-shadow 0.15s, border-color 0.15s;
+    z-index: 10;
+    box-shadow: 0 0 6px rgba(68, 255, 136, 0.25);
+}
+
+#fullscreenBtn svg {
+    width: 16px;
+    height: 16px;
+    display: block;
+}
+
+#fullscreenBtn .icon-compress { display: none; }
+
+#fullscreenBtn:hover {
+    background: rgba(20, 40, 20, 0.95);
+    border-color: #44ff88;
+    box-shadow: 0 0 12px rgba(68, 255, 136, 0.55);
+}
+
+/* Swap icons when fullscreen is active */
+.canvas-container.is-fullscreen #fullscreenBtn .icon-expand   { display: none; }
+.canvas-container.is-fullscreen #fullscreenBtn .icon-compress { display: block; }
+
+/* Fullscreen mode: black letterbox background, canvas scales to fit */
+.canvas-container:fullscreen,
+.canvas-container:-webkit-full-screen {
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100vw;
+    height: 100vh;
+}
+
+.canvas-container:fullscreen canvas,
+.canvas-container:-webkit-full-screen canvas {
+    border-radius: 0;
+    border-color: transparent;
+    /* JS sets explicit width/height; let it fill all available space */
+    max-width: 100vw;
+    max-height: 100vh;
+}
+
+.canvas-container:fullscreen #fullscreenBtn,
+.canvas-container:-webkit-full-screen #fullscreenBtn {
+    bottom: 16px;
+    right: 16px;
+    width: 38px;
+    height: 38px;
+}
+
+.canvas-container:fullscreen #fullscreenBtn svg,
+.canvas-container:-webkit-full-screen #fullscreenBtn svg {
+    width: 20px;
+    height: 20px;
 }
 
 /* ===== How to Play Section ===== */

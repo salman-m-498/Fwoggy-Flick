@@ -6,7 +6,7 @@ export class Frog extends GameObject {
         super(x, y);
         this.health = 3;
         this.maxHealth = 3;
-        this.size = 50;
+        this.size = 32;
         this.width = this.size + 10;
         this.height = this.size;
         this.minRot = (Math.PI / 180) * -70;
@@ -14,20 +14,27 @@ export class Frog extends GameObject {
         this.rotDirection = 1;
         this.canRotate = true;
         this.speed = 2.5;
-        this.frameIndex = 0;
-        this.animTimer = 0;
-        this.animSpeed = 0.2;
-        this.animations = {
-            [PLAYERSTATES.IDLE]: { frames: ["fwoggie 1.png", "fwoggie 2.png", "fwoggie 3.png"], 
-                loop: true },
-            [PLAYERSTATES.DEATH]: { frames: ["fwoggie dead.png"], loop: false }
-        };
+        this.moveSpeed = 300;       // pixels/sec lateral movement
+        this.aimSpeed = 2.5;        // radians/sec manual aim
+        this.lastMoveDir = 0;       // -1 left, 0 still, 1 right
+        this.leftBound = 0;
+        this.rightBound = 800;
+        
+        // Procedural animation properties
+        this.squashTime = 0;           // Timer for breathing animation
+        this.squashAmount = 0;         // Current squash amount (0 to 1)
+        this.breathSpeed = 2;          // Breathing frequency (Hz)
+        this.deathRotation = 0;        // Rotation during death
+        this.deathAlpha = 1;           // Alpha during death
+        this.lastVelocityY = 0;        // Track landing for squash effect
+        
         this.state = PLAYERSTATES.IDLE;
         
         // Powerup states
         this.hasShield = false;
         this.shieldTime = 0;
         this.multishotCount = 0;
+        this.hasMultishot = false;
         this.damageFlashTime = 0;
     }
 
@@ -40,19 +47,38 @@ export class Frog extends GameObject {
         return localVerts.map(v => this.rotatePoint(v.x, v.y));
     }
 
-    update(deltaSeconds) {
-        // TODO: Refactor Animation functions into separate Animator class
-        // Animation
-        this.animTimer += deltaSeconds;
-        if (this.animTimer >= this.animSpeed) {
-            this.animTimer = 0;
-            const anim = this.animations[this.state];
-            if (anim) {
-                this.frameIndex++;
-                if (this.frameIndex >= anim.frames.length) {
-                    this.frameIndex = anim.loop ? 0 : anim.frames.length - 1;
-                }
+    update(deltaSeconds, tongue, keys) {
+        // Procedural animation updates
+        this.squashTime += deltaSeconds;
+        
+        if (this.state === PLAYERSTATES.DEATH) {
+            this.deathRotation += deltaSeconds * 4;
+            this.deathAlpha -= deltaSeconds * 0.8;
+            if (this.deathAlpha < 0) this.deathAlpha = 0;
+        } else {
+            // Breathing animation
+            this.squashAmount = Math.sin(this.squashTime * this.breathSpeed * Math.PI) * 0.05;
+            if (tongue && tongue.state === PLAYERSTATES.EXTENDING) {
+                const extensionProgress = tongue.length / tongue.maxLength;
+                this.squashAmount += extensionProgress * 0.15;
             }
+        }
+        
+        this.lastVelocityY = this.y;
+        
+        // --- Lateral movement (arrow keys) ---
+        if (keys && this.state !== PLAYERSTATES.DEATH) {
+            const movingLeft  = keys['ArrowLeft'];
+            const movingRight = keys['ArrowRight'];
+            // Squash sprite on direction reversal for juice
+            if (movingLeft  && this.lastMoveDir === 1)  this.squashAmount = 0.18;
+            if (movingRight && this.lastMoveDir === -1) this.squashAmount = 0.18;
+            if (movingLeft)  this.x -= this.moveSpeed * deltaSeconds;
+            if (movingRight) this.x += this.moveSpeed * deltaSeconds;
+            this.lastMoveDir = movingLeft ? -1 : (movingRight ? 1 : 0);
+            // Clamp to play area
+            this.x = Math.max(this.leftBound + this.size / 2,
+                     Math.min(this.rightBound - this.size / 2, this.x));
         }
         
         // Update shield timer
@@ -71,8 +97,22 @@ export class Frog extends GameObject {
         
         if (!this.canRotate) return;
 
-        this.rotation += this.rotDirection * this.speed * deltaSeconds;
+        // Manual aim override (Up/Down arrows pause auto-pendulum while held)
+        if (keys) {
+            if (keys['ArrowUp']) {
+                this.rotation -= this.aimSpeed * deltaSeconds;
+                this.rotation = Math.max(this.minRot, this.rotation);
+                return;
+            }
+            if (keys['ArrowDown']) {
+                this.rotation += this.aimSpeed * deltaSeconds;
+                this.rotation = Math.min(this.maxRot, this.rotation);
+                return;
+            }
+        }
 
+        // Auto-pendulum
+        this.rotation += this.rotDirection * this.speed * deltaSeconds;
         if (this.rotation >= this.maxRot) {
             this.rotation = this.maxRot;
             this.rotDirection = -1;
@@ -105,7 +145,7 @@ export class Frog extends GameObject {
         }
     }
 
-    draw(ctx, images, atlas) {
+    draw(ctx, images) {
         ctx.save();
         ctx.translate(this.x, this.y);
         ctx.rotate(this.rotation);
@@ -130,17 +170,23 @@ export class Frog extends GameObject {
             ctx.globalAlpha = 1;
         }
 
-        if (images.frogSpritesheet && atlas) {
-        const anim = this.animations[this.state];
-        const frameName = anim.frames[this.frameIndex];
-        const frameData = atlas.frames[frameName].frame;
-
-        ctx.drawImage(
-            images.frogSpritesheet,
-            frameData.x, frameData.y, // Source X, Y from JSON
-            frameData.w, frameData.h, // Source W, H from JSON
-            -this.size / 2, -this.size / 2, // Center on frog position
-            this.size, this.size      // Scale to frog size
+        // Apply procedural animation transforms
+        if (this.state === PLAYERSTATES.DEATH) {
+            ctx.rotate(this.deathRotation);
+            ctx.globalAlpha = this.deathAlpha;
+        }
+        
+        // Apply squash and stretch
+        const scaleX = 1 - this.squashAmount;
+        const scaleY = 1 + this.squashAmount;
+        ctx.scale(scaleX, scaleY);
+        
+        // Draw single sprite
+        if (images.frogSprite) {
+            ctx.drawImage(
+                images.frogSprite,
+                -this.size / 2, -this.size / 2,
+                this.size, this.size
             );
         }
         ctx.restore();
@@ -158,6 +204,21 @@ export class Tongue extends GameObject {
         this.maxLength = 350;
         this.attachedTile = null;
         this.state = PLAYERSTATES.IDLE;
+        // Ricochet / segment tracking
+        this.bounceCount = 0;
+        this.maxBounces = 2;
+        this.segments = [];     // [{x, y, rotation}] one entry per segment start
+        this.segLengths = [];   // current length of each segment
+        this.bounceFlashes = []; // [{x, y, time}] visual ring at bounce points
+        this.leftBound = 0;
+        this.rightBound = 800;
+        this.topBound = 0;
+    }
+
+    setBounds(leftBound, rightBound, topBound) {
+        this.leftBound = leftBound;
+        this.rightBound = rightBound;
+        this.topBound = topBound;
     }
 
     getVertices() {
@@ -186,12 +247,23 @@ export class Tongue extends GameObject {
         };
     }
 
-    // Helper to find the world-space tip of the tongue
+    // World-space tip – accounts for bounced segments
     getTipPosition() {
+        if (this.segments && this.segments.length > 0) {
+            const last = this.segments[this.segments.length - 1];
+            const lastLen = this.segLengths[this.segLengths.length - 1];
+            return {
+                x: last.x + Math.sin(last.rotation) * lastLen,
+                y: last.y - Math.cos(last.rotation) * lastLen
+            };
+        }
         return this.rotatePoint(0, -this.length);
     }
 
-    update(deltaSeconds, spacePressed) {
+    update(deltaSeconds, spacePressed, tileGrid = null) {
+        // Tick bounce flash timers
+        this.bounceFlashes = this.bounceFlashes.filter(f => { f.time -= deltaSeconds; return f.time > 0; });
+
         this.x = this.frog.x;
         this.y = this.frog.y;
         this.rotation = this.frog.rotation;
@@ -199,8 +271,17 @@ export class Tongue extends GameObject {
         if (spacePressed) {
             if (this.state === PLAYERSTATES.IDLE) {
                 this.state = PLAYERSTATES.EXTENDING;
+                // Initialise segment tracking for this extension
+                this.segments  = [{ x: this.frog.x, y: this.frog.y, rotation: this.frog.rotation }];
+                this.segLengths = [0];
+                this.bounceCount = 0;
+                this.bounceFlashes = [];
             } else if (this.state === PLAYERSTATES.LOADED) {
-                this.shootTile();
+                this.shootTile(tileGrid);
+                if (this.frog.multishotCount > 0) {
+                    this.frog.multishotCount--;
+                    if (this.frog.multishotCount <= 0) this.frog.hasMultishot = false;
+                }
                 return;
             }
         }
@@ -208,53 +289,99 @@ export class Tongue extends GameObject {
         switch (this.state) {
             case PLAYERSTATES.LOADED:
                 if (this.attachedTile) {
-                     // Keep tile at mouth
-                     const mouthPos = this.rotatePoint(0, -20); // Slightly in front
-                     this.attachedTile.x = mouthPos.x - this.attachedTile.size/2;
-                     this.attachedTile.y = mouthPos.y - this.attachedTile.size/2;
+                    const mouthPos = this.rotatePoint(0, -20);
+                    this.attachedTile.x = mouthPos.x - this.attachedTile.size / 2;
+                    this.attachedTile.y = mouthPos.y - this.attachedTile.size / 2;
                 } else {
-                     this.state = PLAYERSTATES.IDLE;
+                    this.state = PLAYERSTATES.IDLE;
                 }
                 break;
 
-            case PLAYERSTATES.EXTENDING:
-                this.frog.canRotate = false; // Lock frog
-                this.length += this.extendSpeed * deltaSeconds;
-                this.height = this.length; // Update height for collision detection
+            case PLAYERSTATES.EXTENDING: {
+                this.frog.canRotate = false;
+                this.segLengths[this.segLengths.length - 1] += this.extendSpeed * deltaSeconds;
+
+                // --- Wall ricochet ---
+                if (this.bounceCount < this.maxBounces) {
+                    const lastSeg = this.segments[this.segments.length - 1];
+                    const lastLen = this.segLengths[this.segLengths.length - 1];
+                    const dx = Math.sin(lastSeg.rotation);
+                    const dy = -Math.cos(lastSeg.rotation);
+                    const tipX = lastSeg.x + dx * lastLen;
+                    const tipY = lastSeg.y + dy * lastLen;
+
+                    let t = null, wallX = 0, wallY = 0, newRot = 0;
+
+                    if (tipX < this.leftBound && dx < 0) {
+                        t = (this.leftBound - lastSeg.x) / dx;
+                        wallX = this.leftBound;  wallY = lastSeg.y + dy * t;
+                        newRot = -lastSeg.rotation;
+                    } else if (tipX > this.rightBound && dx > 0) {
+                        t = (this.rightBound - lastSeg.x) / dx;
+                        wallX = this.rightBound; wallY = lastSeg.y + dy * t;
+                        newRot = -lastSeg.rotation;
+                    } else if (tipY < this.topBound && dy < 0) {
+                        t = (this.topBound - lastSeg.y) / dy;
+                        wallX = lastSeg.x + dx * t; wallY = this.topBound;
+                        newRot = Math.PI - lastSeg.rotation;
+                    }
+
+                    if (t !== null && t > 0 && t < lastLen) {
+                        const overshoot = lastLen - t;
+                        this.segLengths[this.segLengths.length - 1] = t;
+                        this.bounceFlashes.push({ x: wallX, y: wallY, time: 0.25 });
+                        this.segments.push({ x: wallX, y: wallY, rotation: newRot });
+                        this.segLengths.push(Math.max(0, overshoot));
+                        this.bounceCount++;
+                    }
+                }
+
+                this.length = this.segLengths.reduce((a, b) => a + b, 0);
+                this.height = this.length;
+
                 if (this.length >= this.maxLength) {
+                    const excess = this.length - this.maxLength;
+                    this.segLengths[this.segLengths.length - 1] = Math.max(0,
+                        this.segLengths[this.segLengths.length - 1] - excess);
                     this.length = this.maxLength;
-                    this.height = this.length;
+                    this.height = this.maxLength;
                     this.state = PLAYERSTATES.RETRACTING;
                 }
                 break;
-                
-            case PLAYERSTATES.RETRACTING:
-                this.length -= this.retractSpeed * deltaSeconds;
+            }
 
-                // If we have a tile, make it follow the tip of the tongue
+            case PLAYERSTATES.RETRACTING:
+                this.segLengths[this.segLengths.length - 1] -= this.retractSpeed * deltaSeconds;
+
+                // Unwind through bounce segments as we retract
+                while (this.segments.length > 1 && this.segLengths[this.segLengths.length - 1] <= 0) {
+                    const overflow = -this.segLengths.pop();
+                    this.segments.pop();
+                    this.segLengths[this.segLengths.length - 1] -= overflow;
+                }
+
+                this.length = Math.max(0, this.segLengths.reduce((a, b) => a + b, 0));
+                this.height = this.length;
+
                 if (this.attachedTile) {
-                    const tipPos = this.getTipPosition(); // Helper to find the end of the tongue
+                    const tipPos = this.getTipPosition();
                     this.attachedTile.x = tipPos.x - this.attachedTile.size / 2;
                     this.attachedTile.y = tipPos.y - this.attachedTile.size / 2;
                 }
 
-                this.height = this.length; // Update height for collision detection
                 if (this.length <= 0) {
                     this.length = 0;
                     this.height = 0;
-                    // If we brought a tile back, stay in IDLE but keep the tile at the Frog's mouth
-                    if (this.attachedTile) {
-                        this.state = PLAYERSTATES.LOADED; 
-                    } else {
-                        this.state = PLAYERSTATES.IDLE;
-                    }
-                    this.frog.canRotate = true; // Unlock frog
+                    this.segments = [];
+                    this.segLengths = [];
+                    this.state = this.attachedTile ? PLAYERSTATES.LOADED : PLAYERSTATES.IDLE;
+                    this.frog.canRotate = true;
                 }
                 break;
         }
     }
 
-    shootTile() {
+    shootTile(tileGrid = null) {
         if (!this.attachedTile) return;
         
         const shootSpeed = 600;
@@ -270,6 +397,35 @@ export class Tongue extends GameObject {
         this.attachedTile.isMoving = true;
         this.attachedTile.type = 'projectile';
         
+        // Handle multishot - create additional projectiles at different angles
+        if (this.frog.multishotCount > 0 && tileGrid) {
+            const TileClass = this.attachedTile.constructor;
+            const angles = [-0.3, 0.3]; // Left and right spread (radians)
+            
+            angles.forEach(angleOffset => {
+                // Create a clone of the tile
+                const clone = new TileClass(this.x, this.y, this.attachedTile.size);
+                clone.type = 'projectile';
+                clone.isMoving = true;
+                
+                // Calculate direction with angle offset
+                const offsetAngle = this.rotation + angleOffset;
+                const offsetDir = { 
+                    x: this.x + Math.sin(offsetAngle), 
+                    y: this.y - Math.cos(offsetAngle) 
+                };
+                const odx = offsetDir.x - this.x;
+                const ody = offsetDir.y - this.y;
+                const olen = Math.hypot(odx, ody);
+                
+                clone.velocity.x = (odx / olen) * shootSpeed;
+                clone.velocity.y = (ody / olen) * shootSpeed;
+                
+                // Add to grid
+                tileGrid.tiles.push(clone);
+            });
+        }
+        
         // Store reference for multishot
         const shotTile = this.attachedTile;
         this.attachedTile = null;
@@ -283,17 +439,50 @@ export class Tongue extends GameObject {
         if (this.length <= 0) return;
 
         ctx.save();
-        ctx.translate(this.x, this.y);
-        ctx.rotate(this.rotation);
 
-        // Tongue line
-        ctx.fillStyle = '#ff80ab';
-        ctx.fillRect(-this.width / 2, -this.length, this.width, this.length);
-        
-        // Tongue Tip
-        ctx.fillStyle = '#ff4081';
-        ctx.fillRect(-this.width, -this.length - 5, this.width * 2, 10);
-        
+        if (this.segments && this.segments.length > 1) {
+            // Multi-segment (bounced) tongue — draw as world-space polyline
+            const points = this.segments.map(s => ({ x: s.x, y: s.y }));
+            points.push(this.getTipPosition());
+
+            ctx.strokeStyle = '#ff80ab';
+            ctx.lineWidth = this.width;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            ctx.moveTo(points[0].x, points[0].y);
+            for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+            ctx.stroke();
+
+            // Tip circle
+            const tip = points[points.length - 1];
+            ctx.fillStyle = '#ff4081';
+            ctx.beginPath();
+            ctx.arc(tip.x, tip.y, this.width, 0, Math.PI * 2);
+            ctx.fill();
+        } else {
+            // Single straight segment — original local-space draw
+            ctx.translate(this.x, this.y);
+            ctx.rotate(this.rotation);
+            ctx.fillStyle = '#ff80ab';
+            ctx.fillRect(-this.width / 2, -this.length, this.width, this.length);
+            ctx.fillStyle = '#ff4081';
+            ctx.fillRect(-this.width, -this.length - 5, this.width * 2, 10);
+        }
+
+        // Expanding ring at each bounce point
+        this.bounceFlashes.forEach(f => {
+            const alpha  = f.time / 0.25;
+            const radius = 8 + (1 - alpha) * 10;
+            ctx.globalAlpha = alpha;
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(f.x, f.y, radius, 0, Math.PI * 2);
+            ctx.stroke();
+        });
+        ctx.globalAlpha = 1;
+
         ctx.restore();
     }
 

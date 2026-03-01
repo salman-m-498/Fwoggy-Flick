@@ -4,7 +4,7 @@ import { ArcadeRenderer } from '../../rendering/ArcadeRenderer.js';
 export class HeartTile extends Tile {
     constructor(x, y, size) {
         super(x, y, size, 'heart');
-        this.canPickup = false; // Heart passes through tongue
+        this.canPickup = true; // Heart is grabbed by tongue and consumed on retract
         this.collected = false;
         this.pulseTime = 0;
         
@@ -30,7 +30,7 @@ export class HeartTile extends Tile {
         return false;
     }
     
-    draw(ctx) {
+    draw(ctx, images) {
         if (this.type === 'empty') return;
         
         ctx.save();
@@ -39,20 +39,16 @@ export class HeartTile extends Tile {
         const y = this.y + this.gapSize;
         const size = this.size - this.gapSize * 2;
         
-        // Draw rounded rectangle with outline
-        ArcadeRenderer.drawRoundedTile(ctx, x, y, size, size, this.defaultColor, 4, 1);
-        
-        // Draw heart emoji with pulse
+        // Apply pulse animation to sprite
         const pulse = Math.sin(this.pulseTime * 3) * 0.1 + 1;
         ctx.translate(x + size / 2, y + size / 2);
         ctx.scale(pulse, pulse);
         ctx.translate(-(x + size / 2), -(y + size / 2));
         
-        ctx.fillStyle = '#FFFFFF';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.font = `${size * 0.8}px Arial`;
-        ctx.fillText('\u2764\ufe0f', x + size / 2, y + size / 2);
+        // Draw sprite
+        if (images && images.heartTile) {
+            ctx.drawImage(images.heartTile, x, y, size, size);
+        }
         
         ctx.restore();
     }

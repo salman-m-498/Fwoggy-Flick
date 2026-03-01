@@ -52,10 +52,94 @@ const ctx = canvas.getContext('2d');
 // Auto-focus canvas for immediate keyboard input
 canvas.focus();
 
+// ── Fullscreen toggle + canvas scaling ───────────────────────────────────────────
+(function () {
+    const btn = document.getElementById('fullscreenBtn');
+    const container = canvas.parentElement; // .canvas-container
+    const CANVAS_W = canvas.width;  // 800 — intrinsic, never changes
+    const CANVAS_H = canvas.height; // 400
+    const ASPECT   = CANVAS_W / CANVAS_H;
+
+    function scaleToFit() {
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        let w = vw, h = vw / ASPECT;
+        if (h > vh) { h = vh; w = vh * ASPECT; }
+        canvas.style.width  = Math.floor(w) + 'px';
+        canvas.style.height = Math.floor(h) + 'px';
+    }
+
+    function resetScale() {
+        canvas.style.width  = '';
+        canvas.style.height = '';
+    }
+
+    function enterFS() {
+        if (container.requestFullscreen)           container.requestFullscreen();
+        else if (container.webkitRequestFullscreen) container.webkitRequestFullscreen();
+    }
+    function exitFS() {
+        if (document.exitFullscreen)           document.exitFullscreen();
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+    }
+
+    btn.addEventListener('click', () => {
+        const isFS = !!(document.fullscreenElement || document.webkitFullscreenElement);
+        if (isFS) exitFS(); else enterFS();
+        canvas.focus();
+    });
+
+    function onFSChange() {
+        const isFS = !!(document.fullscreenElement || document.webkitFullscreenElement);
+        container.classList.toggle('is-fullscreen', isFS);
+        if (isFS) {
+            scaleToFit();
+            window.addEventListener('resize', scaleToFit);
+        } else {
+            window.removeEventListener('resize', scaleToFit);
+            resetScale();
+        }
+        canvas.focus();
+    }
+    document.addEventListener('fullscreenchange',       onFSChange);
+    document.addEventListener('webkitfullscreenchange', onFSChange);
+})();
+
 const GAME_CONFIG = {
     playWidth: 500, // The width of the actual game area
     get leftBound() { return (canvas.width - this.playWidth) / 2; },
     get rightBound() { return (canvas.width + this.playWidth) / 2; },
+};
+
+// ── Arcade HUD palette ───────────────────────────────────────────────────────
+const HUD = {
+    bg:           '#0c0c0c',
+    border:       '#1e3a1e',
+    divider:      '#252525',
+    textPrimary:  '#d4ffd4',
+    textMuted:    '#667766',
+    textDim:      '#445544',
+    neonGreen:    '#44ff88',
+    neonGreenGlow:'#00ff44',
+    arcadeYellow: '#ffee00',
+    arcadeYellowGlow: '#ffcc00',
+    // Tile swatch colours
+    tileHeart:    '#ff6699',
+    tileShield:   '#ffee00',
+    tileMulti:    '#00ffff',
+    tileIce:      '#44aaff',
+    tileSlow:     '#5566ff',
+    tileBomb:     '#ff4422',
+    tileSpike:    '#ff9944',
+    tilePoison:   '#bb44ff',
+    tileHard:     '#aa8855',
+    tileNormal:   '#44cc44',
+    // Status pill colours
+    pillShield:   '#ffdd00',
+    pillMulti:    '#ff44ff',
+    pillFreeze:   '#44ffff',
+    pillSlow:     '#4488ff',
+    PIXEL_FONT:   '"Press Start 2P", monospace',
 };
 
 // Reset game state
@@ -64,11 +148,16 @@ function resetGameState() {
     player.state = PLAYERSTATES.IDLE;
     player.canRotate = true;
     player.rotation = 0;
-    player.frameIndex = 0;
-    player.animTimer = 0;
+    player.squashTime = 0;
+    player.squashAmount = 0;
+    player.deathRotation = 0;
+    player.deathAlpha = 1;
+    player.lastVelocityY = 0;
+    player.lastMoveDir = 0;
     player.hasShield = false;
     player.shieldTime = 0;
     player.multishotCount = 0;
+    player.hasMultishot = false;
     player.damageFlashTime = 0;
     resetScore();
     
@@ -87,13 +176,16 @@ function resetGameState() {
 }
 
 const player = new Frog(400, 350);
-
 const tongue = new Tongue(player);
+
+// Give frog and tongue the play-area bounds
+player.leftBound  = GAME_CONFIG.leftBound;
+player.rightBound = GAME_CONFIG.rightBound;
+tongue.setBounds(GAME_CONFIG.leftBound, GAME_CONFIG.rightBound, 0);
 
 const heartDisplay = new HeartDisplay(20, 30, 3); // x, y, maxHearts
 
 const images = {};
-let frogAtlas = null;
 
 async function preloadAssets() {
     const loadImage = (src) => new Promise((resolve, reject) => {
@@ -104,13 +196,34 @@ async function preloadAssets() {
     });
 
     try {
-        const [funcSheet, atlas] = await Promise.all([
-            loadImage('./Sprites/fwoggie-ss.png'),
-            fetch('./Sprites/fwoggie-ss.json').then(r => r.json())
+        const [frogSprite, normalTile, bombTile, hardenedTile, hardenedCrackedTile, 
+               heartTile, iceTile, multishotTile, poisonTile, shieldTile, slowTile, spikeTile] = await Promise.all([
+            loadImage('./Sprites/fwoggie.png'),
+            loadImage('./Sprites/tiles/normal.png'),
+            loadImage('./Sprites/tiles/bomb.png'),
+            loadImage('./Sprites/tiles/hardened.png'),
+            loadImage('./Sprites/tiles/hardenedcracked.png'),
+            loadImage('./Sprites/tiles/heart.png'),
+            loadImage('./Sprites/tiles/ice.png'),
+            loadImage('./Sprites/tiles/multishot.png'),
+            loadImage('./Sprites/tiles/poison.png'),
+            loadImage('./Sprites/tiles/shield.png'),
+            loadImage('./Sprites/tiles/slow.png'),
+            loadImage('./Sprites/tiles/spike.png')
         ]);
 
-        images.frogSpritesheet = funcSheet;
-        frogAtlas = atlas;
+        images.frogSprite = frogSprite;
+        images.normalTile = normalTile;
+        images.bombTile = bombTile;
+        images.hardenedTile = hardenedTile;
+        images.hardenedCrackedTile = hardenedCrackedTile;
+        images.heartTile = heartTile;
+        images.iceTile = iceTile;
+        images.multishotTile = multishotTile;
+        images.poisonTile = poisonTile;
+        images.shieldTile = shieldTile;
+        images.slowTile = slowTile;
+        images.spikeTile = spikeTile;
         
         console.log('Assets loaded!');
         // Game loop is already running
@@ -131,7 +244,9 @@ let lastTime = 0;
 // Listen for keyboard input
 window.addEventListener('keydown', e => {
     // Prevent default browser behavior for game controls
-    if (e.code === 'Space' || e.code === 'Escape' || e.code === 'KeyP') {
+    if (e.code === 'Space' || e.code === 'Escape' || e.code === 'KeyP' ||
+        e.code === 'ArrowLeft' || e.code === 'ArrowRight' ||
+        e.code === 'ArrowUp'   || e.code === 'ArrowDown') {
         e.preventDefault();
     }
     if (!keys[e.code]) keysJustPressed[e.code] = true;
@@ -139,7 +254,9 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => {
     // Prevent default browser behavior for game controls
-    if (e.code === 'Space' || e.code === 'Escape' || e.code === 'KeyP') {
+    if (e.code === 'Space' || e.code === 'Escape' || e.code === 'KeyP' ||
+        e.code === 'ArrowLeft' || e.code === 'ArrowRight' ||
+        e.code === 'ArrowUp'   || e.code === 'ArrowDown') {
         e.preventDefault();
     }
     keys[e.code] = false;
@@ -188,6 +305,12 @@ function drawMenu() {
     ctx.textAlign = "center";
     ctx.font = '48px Arial';
     ctx.fillText("Tongue Punch", canvas.width/2, canvas.height/2 - 80);
+
+    // Draw Controls
+    ctx.fillStyle = 'white';
+    ctx.textAlign = "center";
+    ctx.font = '16px Arial';
+    ctx.fillText("\u2190 \u2192  Move    \u2191 \u2193  Aim    SPACE  Fire", canvas.width/2, canvas.height/2 - 20);
 
     // Draw Instructions
     ctx.fillStyle = 'white';
@@ -238,49 +361,308 @@ function drawGameWorld() {
     ctx.fillStyle = 'lightblue';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    tileGrid.draw(ctx);
+    tileGrid.draw(ctx, images);
     
     // Draw attached tile on top if it exists
     if (tongue.attachedTile) {
-        tongue.attachedTile.draw(ctx);
+        tongue.attachedTile.draw(ctx, images);
     }
 
-    player.draw(ctx, images, frogAtlas);
+    player.draw(ctx, images);
     tongue.draw(ctx);
 }
 
+// ── HUD helper drawing functions ─────────────────────────────────────────────
+
+/** Dotted pixel divider line */
+function hudDivider(y, x0, x1) {
+    ctx.fillStyle = HUD.divider;
+    for (let x = x0 + 4; x < x1 - 4; x += 5) {
+        ctx.fillRect(x, y, 3, 1);
+    }
+}
+
+/** Small section label with 2px left accent bar */
+function hudLabel(x, y, text, color = HUD.textMuted) {
+    ctx.fillStyle = HUD.neonGreen;
+    ctx.fillRect(x, y - 7, 2, 9);
+    ctx.fillStyle = color;
+    ctx.font = `6px ${HUD.PIXEL_FONT}`;
+    ctx.textAlign = 'left';
+    ctx.fillText(text, x + 6, y);
+}
+
+/** Active-status pill: coloured left bar + glowing text */
+function hudPill(x, y, color, text) {
+    const w = 130, h = 15;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, 3, h);
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.35;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    ctx.globalAlpha = 1;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 5;
+    ctx.fillStyle = HUD.textPrimary;
+    ctx.font = `6px ${HUD.PIXEL_FONT}`;
+    ctx.textAlign = 'left';
+    ctx.fillText(text, x + 7, y + 10);
+    ctx.shadowBlur = 0;
+}
+
+/** Keyboard key chip */
+function hudKey(x, y, label) {
+    const fontSize = 6;
+    ctx.font = `${fontSize}px ${HUD.PIXEL_FONT}`;
+    const tw = ctx.measureText(label).width;
+    const kw = tw + 10, kh = 13;
+    ctx.fillStyle = '#1e2e1e';
+    ctx.fillRect(x, y, kw, kh);
+    ctx.fillStyle = '#2e462e';
+    ctx.fillRect(x, y, kw, kh - 2);
+    ctx.strokeStyle = '#3a5a3a';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, kw - 1, kh - 1);
+    ctx.fillStyle = HUD.neonGreen;
+    ctx.textAlign = 'left';
+    ctx.fillText(label, x + 5, y + 10);
+    return kw;
+}
+
+/** Control row: key chip + action text */
+function hudControl(x, y, keyLabel, actionText) {
+    const kw = hudKey(x, y, keyLabel);
+    ctx.fillStyle = HUD.textPrimary;
+    ctx.font = `6px ${HUD.PIXEL_FONT}`;
+    ctx.textAlign = 'left';
+    ctx.fillText(actionText, x + kw + 5, y + 10);
+}
+
+/** Tile sprite entry for the right bar — uses actual game sprite with glow */
+function hudTileEntry(x, y, img, glowColor, name, desc) {
+    const S = 14; // sprite size
+    if (img) {
+        // Glow halo behind sprite
+        ctx.shadowColor = glowColor;
+        ctx.shadowBlur = 7;
+        ctx.drawImage(img, x, y, S, S);
+        ctx.shadowBlur = 0;
+    } else {
+        // Fallback: solid colour square
+        ctx.shadowColor = glowColor;
+        ctx.shadowBlur = 5;
+        ctx.fillStyle = glowColor;
+        ctx.fillRect(x, y, S, S);
+        ctx.shadowBlur = 0;
+    }
+    // Name
+    ctx.fillStyle = HUD.textPrimary;
+    ctx.font = `6px ${HUD.PIXEL_FONT}`;
+    ctx.textAlign = 'left';
+    ctx.fillText(name, x + S + 4, y + 7);
+    // Desc (smaller, muted)
+    ctx.fillStyle = HUD.textMuted;
+    ctx.font = `5px ${HUD.PIXEL_FONT}`;
+    ctx.fillText(desc, x + S + 4, y + 15);
+}
+
+/** Scanline CRT pass over a rect */
+function hudScanlines(x, y, w, h) {
+    ctx.fillStyle = 'rgba(0,0,0,0.13)';
+    for (let sy = y; sy < y + h; sy += 3) {
+        ctx.fillRect(x, sy, w, 1);
+    }
+}
+
+/** Arcade glow text (centred in a given x range) */
+function hudGlowText(text, cx, y, size, color, glowColor, glowStrength = 10) {
+    ctx.shadowColor = glowColor;
+    ctx.shadowBlur = glowStrength;
+    ctx.fillStyle = color;
+    ctx.font = `bold ${size}px ${HUD.PIXEL_FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillText(text, cx, y);
+    ctx.shadowBlur = 0;
+}
+
+// ── Left bar ──────────────────────────────────────────────────────────────────
+function drawHUD_left() {
+    const LX = 0, LW = GAME_CONFIG.leftBound; // 0–150
+    const cx = LX + LW / 2;  // centre x = 75
+    const now = performance.now() * 0.001;
+
+    // Background
+    ctx.fillStyle = HUD.bg;
+    ctx.fillRect(LX, 0, LW, canvas.height);
+
+    // Right border glow
+    ctx.strokeStyle = HUD.border;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(LW - 1, 0);
+    ctx.lineTo(LW - 1, canvas.height);
+    ctx.stroke();
+
+    // ── TITLE ──
+    hudGlowText('FWOGGY', cx, 18, 8, HUD.neonGreen, HUD.neonGreenGlow, 14);
+    hudGlowText('FLICK',  cx, 31, 8, HUD.neonGreen, HUD.neonGreenGlow, 14);
+
+    hudDivider(39, LX, LW);
+
+    // ── HEALTH ──
+    hudLabel(10, 52, 'HEALTH');
+    const shake = (heartDisplay && heartDisplay.shakeIntensity > 0 && heartDisplay.shakeDuration > 0)
+        ? (Math.random() - 0.5) * heartDisplay.shakeIntensity : 0;
+    const heartSpacing = 22;
+    const hxBase = cx - (player.maxHealth * heartSpacing) / 2 + heartSpacing / 2;
+    for (let i = 0; i < player.maxHealth; i++) {
+        const hx = hxBase + i * heartSpacing + shake;
+        const hy = 60 + shake;
+        const filled = i < player.health;
+        if (filled) { ctx.shadowColor = HUD.tileHeart; ctx.shadowBlur = 8; }
+        const s = 13;
+        ctx.save();
+        ctx.translate(hx, hy + s / 2);
+        ctx.font = `${s}px serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = filled ? HUD.tileHeart : '#2a1a1a';
+        ctx.fillText(filled ? '♥' : '♡', 0, 0);
+        ctx.restore();
+        ctx.shadowBlur = 0;
+    }
+    ctx.textBaseline = 'alphabetic';
+
+    hudDivider(80, LX, LW);
+
+    // ── SCORE ──
+    hudLabel(10, 92, 'SCORE');
+    const pulseMul = 0.7 + 0.3 * Math.sin(now * 3);
+    const score = getPlayerScore();
+    ctx.shadowColor = HUD.arcadeYellowGlow;
+    ctx.shadowBlur = 8 * pulseMul;
+    ctx.fillStyle = HUD.arcadeYellow;
+    ctx.font = `10px ${HUD.PIXEL_FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillText(String(score).padStart(6, '0'), cx, 108);
+    ctx.shadowBlur = 0;
+
+    hudDivider(116, LX, LW);
+
+    // ── CONTROLS ──
+    hudLabel(10, 128, 'CONTROLS');
+    hudControl(10, 133, 'SPC', 'FIRE');
+    hudControl(10, 150, '←→',  'MOVE');
+    hudControl(10, 167, '↑↓',  'AIM');
+    hudControl(10, 184, 'P',   'PAUSE');
+
+    hudDivider(200, LX, LW);
+
+    // ── STATUS (active effects only) ──
+    const statusItems = [];
+    if (player.hasShield)
+        statusItems.push([HUD.pillShield,  `SHIELD ${player.shieldTime.toFixed(1)}s`]);
+    if (player.multishotCount > 0)
+        statusItems.push([HUD.pillMulti,   `MULTI  x${player.multishotCount}`]);
+    if (tileGrid.freezeTimeRemaining > 0)
+        statusItems.push([HUD.pillFreeze,  `FROZEN ${tileGrid.freezeTimeRemaining.toFixed(1)}s`]);
+    if (tileGrid.slowTimeRemaining > 0)
+        statusItems.push([HUD.pillSlow,    `SLOWED ${tileGrid.slowTimeRemaining.toFixed(1)}s`]);
+
+    if (statusItems.length > 0) {
+        hudLabel(10, 211, 'STATUS');
+        statusItems.forEach(([col, txt], i) => {
+            hudPill(10, 215 + i * 19, col, txt);
+        });
+    } else {
+        ctx.fillStyle = HUD.textDim;
+        ctx.font = `6px ${HUD.PIXEL_FONT}`;
+        ctx.textAlign = 'center';
+        ctx.fillText('-- no effects --', cx, 216);
+    }
+
+    // CRT scanlines
+    hudScanlines(LX, 0, LW, canvas.height);
+}
+
+// ── Right bar ─────────────────────────────────────────────────────────────────
+function drawHUD_right() {
+    const RX = GAME_CONFIG.rightBound, RW = canvas.width - RX; // 650–800
+    const cx = RX + RW / 2; // centre = 725
+    const lx = RX + 8;      // left margin inside bar
+
+    // Background
+    ctx.fillStyle = HUD.bg;
+    ctx.fillRect(RX, 0, RW, canvas.height);
+
+    // Left border glow
+    ctx.strokeStyle = HUD.border;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(RX + 1, 0);
+    ctx.lineTo(RX + 1, canvas.height);
+    ctx.stroke();
+
+    // ── TITLE ──
+    hudGlowText('TILE',  cx, 18, 8, HUD.neonGreen, HUD.neonGreenGlow, 14);
+    hudGlowText('GUIDE', cx, 31, 8, HUD.neonGreen, HUD.neonGreenGlow, 14);
+
+    hudDivider(39, RX, RX + RW);
+
+    // ── POWERUPS ──
+    ctx.fillStyle = HUD.neonGreen;
+    ctx.fillRect(lx, 44, 2, 8);
+    ctx.fillStyle = '#aaffbb';
+    ctx.font = `6px ${HUD.PIXEL_FONT}`;
+    ctx.textAlign = 'left';
+    ctx.fillText('POWERUPS', lx + 6, 51);
+
+    // Each entry: sprite(14×14) + name(6px) + desc(5px), row height 21px
+    hudTileEntry(lx, 56,  images.heartTile,    HUD.tileHeart,  'HEART',  'grab to heal');
+    hudTileEntry(lx, 77,  images.shieldTile,   HUD.tileShield, 'SHIELD', '3s safe');
+    hudTileEntry(lx, 98,  images.multishotTile, HUD.tileMulti, 'MULTI',  '3x fire');
+    hudTileEntry(lx, 119, images.iceTile,       HUD.tileIce,   'ICE',    'freeze 5s');
+    hudTileEntry(lx, 140, images.slowTile,      HUD.tileSlow,  'SLOW',   'frz+slow');
+    hudTileEntry(lx, 161, images.bombTile,      HUD.tileBomb,  'BOMB',   'explodes!');
+
+    hudDivider(182, RX, RX + RW);
+
+    // ── HAZARDS ──
+    ctx.fillStyle = '#ff6666';
+    ctx.fillRect(lx, 187, 2, 8);
+    ctx.fillStyle = '#ffaaaa';
+    ctx.font = `6px ${HUD.PIXEL_FONT}`;
+    ctx.textAlign = 'left';
+    ctx.fillText('HAZARDS', lx + 6, 194);
+
+    hudTileEntry(lx, 199, images.spikeTile,    HUD.tileSpike,  'SPIKE',  'deflects!');
+    hudTileEntry(lx, 220, images.poisonTile,   HUD.tilePoison, 'POISON', 'tongue burn');
+    hudTileEntry(lx, 241, images.hardenedTile, HUD.tileHard,   'HARD',   '2 hits');
+    hudTileEntry(lx, 262, images.normalTile,   HUD.tileNormal, 'NORMAL', 'standard');
+
+    hudDivider(283, RX, RX + RW);
+
+    // ── BEST SCORE ──
+    hudLabel(lx, 295, 'BEST SCORE');
+    const best = getBestScore();
+    ctx.shadowColor = HUD.arcadeYellowGlow;
+    ctx.shadowBlur = 7;
+    ctx.fillStyle = HUD.arcadeYellow;
+    ctx.font = `10px ${HUD.PIXEL_FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillText(String(best).padStart(6, '0'), cx, 313);
+    ctx.shadowBlur = 0;
+
+    // CRT scanlines
+    hudScanlines(RX, 0, RW, canvas.height);
+}
+
 function drawHUD() {
-    ctx.fillStyle = 'black';
-    // Left Bar: From 0 to the start of the play zone
-    ctx.fillRect(0, 0, GAME_CONFIG.leftBound, canvas.height);
-    
-    // Draw hearts using HeartDisplay
-    heartDisplay.draw(ctx, player.health);
-    
-    ctx.fillStyle = 'white';
-    ctx.font = '20px Arial';
-    ctx.textAlign = "left";
-    ctx.fillText(`Score: ${getPlayerScore()}`, 20, 100);
-    
-    // Right Bar: From the end of the play zone to the canvas edge
-    ctx.fillStyle = 'black';
-    ctx.fillRect(GAME_CONFIG.rightBound, 0, canvas.width - GAME_CONFIG.rightBound, canvas.height);
-    
-    // Display best score on right bar
-    ctx.fillStyle = 'white';
-    ctx.font = '16px Arial';
-    ctx.textAlign = "right";
-    ctx.fillText(`Best: ${getBestScore()}`, canvas.width - 20, 30);
-    
-    // Display powerup status
-    if (player.hasShield) {
-        ctx.fillStyle = '#FFD700';
-        ctx.fillText(`Shield: ${player.shieldTime.toFixed(1)}s`, canvas.width - 20, 60);
-    }
-    if (player.multishotCount > 0) {
-        ctx.fillStyle = '#FF44FF';
-        ctx.fillText(`Multishot: ${player.multishotCount}`, canvas.width - 20, 90);
-    }
+    drawHUD_left();
+    drawHUD_right();
 }
 
 function drawGameOverScreen() {
@@ -335,8 +717,8 @@ function drawGameOverScreen() {
 function updatePhysics(deltaSeconds) {
     updateScore(deltaSeconds);
     
-    player.update(deltaSeconds);
-    tongue.update(deltaSeconds, keysJustPressed['Space']);
+    player.update(deltaSeconds, tongue, keys);
+    tongue.update(deltaSeconds, keysJustPressed['Space'], tileGrid);
     
     // Pass current score to grid for difficulty scaling
     tileGrid.setScore(getPlayerScore());
@@ -346,23 +728,24 @@ function updatePhysics(deltaSeconds) {
     const speedIncrease = Math.min(getPlayerScore() / 100, 20) * 0.1; // Max 2x at score 2000
     const targetSpeed = baseSpeed + speedIncrease;
     
-    // Only update if not frozen
-    if (tileGrid.freezeTimeRemaining <= 0 && tileGrid.scrollSpeed !== 0) {
+    // Only update speed if not frozen AND not in a slow phase
+    if (tileGrid.freezeTimeRemaining <= 0 && tileGrid.slowTimeRemaining <= 0) {
         tileGrid.originalScrollSpeed = targetSpeed;
         tileGrid.scrollSpeed = targetSpeed;
     }
     
     tileGrid.update(deltaSeconds);
-    
-    // Check for HeartTiles that reached player zone (bottom)
-    const playerZoneY = 420; // Where player can collect hearts
-    tileGrid.tiles.forEach(tile => {
-        if (tile.constructor.name === 'HeartTile' && tile.y >= playerZoneY && !tile.collected) {
-            if (tile.onPlayerContact && tile.onPlayerContact(player)) {
-                console.log('Player collected heart!');
-            }
-        }
-    });
+
+    // Heart tile grabbed by tongue: heal immediately when retracted instead of shooting
+    if (tongue.state === PLAYERSTATES.LOADED &&
+        tongue.attachedTile &&
+        tongue.attachedTile.constructor.name === 'HeartTile') {
+        player.health = Math.min(player.health + 1, player.maxHealth);
+        tongue.attachedTile.type = 'empty';
+        tongue.attachedTile = null;
+        tongue.state = PLAYERSTATES.IDLE;
+        tongue.length = 0;
+    }
     
     // Check for tiles that scrolled past player (triggers damage)
     tileGrid.removeOffscreenTiles(player);
@@ -384,17 +767,7 @@ function updatePhysics(deltaSeconds) {
 }
 
 function checkCollisions() {
-
-    // 0. Tongue Boundary Check
-    if (tongue.state === PLAYERSTATES.EXTENDING && tongue.length > 0) {
-        const tongueTip = tongue.rotatePoint(0, -tongue.length);
-        // Create a temporary object with size for the check
-        const tipObj = { x: tongueTip.x, y: tongueTip.y, size: 10 }; 
-        
-        if (CollisionUtils.checkBoundaries(tipObj, canvas) != null) {
-            tongue.state = PLAYERSTATES.RETRACTING;
-        }
-    }
+    // Tongue boundary is now handled internally by the Tongue (wall ricochet).
 
     tileGrid.tiles.filter(t => t.type === 'projectile').forEach(flyingTile => {
         
@@ -407,12 +780,13 @@ function checkCollisions() {
             flyingTile.registerBounce();
         }
 
-        // 2. Check Other Tiles (exclude empty, projectile, and held tiles)
+        // 2. Check Other Tiles (exclude empty, projectile, held, and heart tiles)
         const targets = tileGrid.tiles.filter(t => 
             t !== flyingTile &&
             t.type !== 'empty' && 
             t.type !== 'projectile' && 
-            t.type !== 'held'
+            t.type !== 'held' &&
+            t.constructor.name !== 'HeartTile'
         );
         targets.forEach(otherTile => {
             if (flyingTile === otherTile) return;
@@ -441,17 +815,16 @@ function checkCollisions() {
                 
                 // Handle hitting different tile types
                 if (tileName === 'SpikeTile') {
-                    // SpikeTile is very tough and damages player when hit
+                    // SpikeTile reflects projectile; player is NOT damaged by hitting it
                     if (otherTile.onHit) {
                         otherTile.onHit(flyingTile);
                     }
-                    // Check if spike is destroyed
                     if (otherTile.health <= 0) {
                         otherTile.type = 'empty';
-                        addScore(30); // Bonus for destroying spike
+                        addScore(30);
+                    } else {
+                        flyingTile.registerBounce();
                     }
-                    // Damage player
-                    player.damage(1);
                     flyingTile.type = 'empty';
                     flyingTile.isMoving = false;
                     return;
@@ -460,7 +833,12 @@ function checkCollisions() {
                 if (tileName === 'HardenedTile') {
                     if (typeof otherTile.onHit === 'function') {
                         otherTile.onHit(flyingTile);
-                        flyingTile.registerBounce();
+                        if (otherTile.hp <= 0) {
+                            addScore(25);
+                        } else {
+                            addScore(10);
+                            flyingTile.registerBounce();
+                        }
                     }
                     return;
                 }
@@ -487,6 +865,16 @@ function checkCollisions() {
                     flyingTile.isMoving = false;
                     return;
                 }
+
+                // ShieldTile or MultishotTile thrown as projectile — still grant effect
+                if (flyingTile.constructor.name === 'ShieldTile' && typeof flyingTile.onDestroy === 'function') {
+                    flyingTile.onDestroy(player);
+                    flyingTile.type = 'empty';
+                    flyingTile.isMoving = false;
+                    otherTile.type = 'empty';
+                    addScore(15);
+                    return;
+                }
                 
                 if (tileName === 'MultishotTile' && typeof otherTile.onDestroy === 'function') {
                     otherTile.onDestroy(player);
@@ -494,6 +882,15 @@ function checkCollisions() {
                     addScore(15);
                     flyingTile.type = 'empty';
                     flyingTile.isMoving = false;
+                    return;
+                }
+
+                if (flyingTile.constructor.name === 'MultishotTile' && typeof flyingTile.onDestroy === 'function') {
+                    flyingTile.onDestroy(player);
+                    flyingTile.type = 'empty';
+                    flyingTile.isMoving = false;
+                    otherTile.type = 'empty';
+                    addScore(15);
                     return;
                 }
                 
@@ -510,25 +907,27 @@ function checkCollisions() {
     const candidates = tileGrid.tiles.filter(t => 
         t.type !== 'empty' && 
         t.type !== 'held' && 
-        t.type !== 'projectile' &&
-        t.type !== 'heart' // Hearts don't interact with tongue
+        t.type !== 'projectile'
     );
 
     if(tongue.state === PLAYERSTATES.EXTENDING && tongue.length > 0) {
-        const tongueTip = tongue.rotatePoint(0, -tongue.length);
+        const tongueTip = tongue.getTipPosition();
+        const tipRadius = tongue.width; // hit-box radius around tip
 
-        // Find the closest colliding tile regardless of type
+        // Tip-in-tile bounds check — correct after ricochets
+        // (checkAABB uses tongue.getVertices() which only covers the first segment)
         let closestTile = null;
         let closestDist = Infinity;
         
         for (let tile of candidates) {
-            if (CollisionUtils.checkAABB(tongue, tile)) {
-                
-                // Refinement: Check distance to center to ensure we pick the first one hit
+            const inBounds = tongueTip.x >= tile.x - tipRadius &&
+                             tongueTip.x <= tile.x + tile.size + tipRadius &&
+                             tongueTip.y >= tile.y - tipRadius &&
+                             tongueTip.y <= tile.y + tile.size + tipRadius;
+            if (inBounds) {
                 const tileCenterX = tile.x + tile.size / 2;
                 const tileCenterY = tile.y + tile.size / 2;
                 const dist = Math.hypot(tongueTip.x - tileCenterX, tongueTip.y - tileCenterY);
-                
                 if (dist < closestDist) {
                     closestDist = dist;
                     closestTile = tile;
@@ -539,10 +938,10 @@ function checkCollisions() {
         if (closestTile) {
             // Check if tile is grabbable using canPickup property
             if (closestTile.canPickup) {
-                // Check for PoisonTile danger
-                if (closestTile.constructor.name === 'PoisonTile' && closestTile.isDangerous) {
+                // Check for poison tile - only damages when touched by tongue
+                if (closestTile.constructor.name === 'PoisonTile') {
                     player.damage(1);
-                    console.log('Grabbed poison tile! Took damage.');
+                    console.log('Tongue touched poison tile! Took damage.');
                 }
                 // Grab the tile
                 tongue.onCollision(closestTile);
