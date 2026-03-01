@@ -165,13 +165,14 @@ export class TileGrid {
         this.tiles.forEach(tile => tile.draw(ctx, images));
     }
     
-    removeOffscreenTiles(player) {
+    removeOffscreenTiles(player, onRemoved) {
         const bottomThreshold = 450; // Canvas height + buffer
         this.tiles = this.tiles.filter(tile => {
             if (tile.y > bottomThreshold && tile.type !== 'projectile') {
                 // Don't damage player for HeartTiles that weren't collected
                 if (player && tile.constructor.name !== 'HeartTile') {
                     player.damage(1); // Damage the player
+                    if (onRemoved) onRemoved(tile);
                 }
                 return false; // Remove tile
             }

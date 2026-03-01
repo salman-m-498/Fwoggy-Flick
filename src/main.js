@@ -4,6 +4,7 @@ import { TileGrid } from './entities/tiles/index.js';
 import { HeartDisplay } from './entities/HeartDisplay.js';
 import { CollisionUtils } from './Collision.js';
 import { GameManager, GAMESTATES } from './GameManager.js';
+import { ParticleSystem } from './ParticleSystem.js';
 import {
     addScore,
     getBestScore,
@@ -357,12 +358,30 @@ const tileGrid = new TileGrid(
     tileSize
 );
 
+const particles = new ParticleSystem(500);
+
+const TILE_COLORS = {
+    NormalTile:     '#44cc44',
+    BombTile:       '#ff4422',
+    IceTile:        '#44aaff',
+    SlowTile:       '#5566ff',
+    PoisonTile:     '#bb44ff',
+    SpikeTile:      '#ff9944',
+    HardenedTile:   '#aa8855',
+    ShieldTile:     '#ffee00',
+    MultishotTile:  '#00ffff',
+    HeartTile:      '#ff6699',
+};
+function tileColor(tile) { return TILE_COLORS[tile.constructor.name] || '#aaffaa'; }
+function tileCenter(tile) { return { x: tile.x + tile.size / 2, y: tile.y + tile.size / 2 }; }
+
 function drawGameWorld() {
     ctx.fillStyle = 'lightblue';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     tileGrid.draw(ctx, images);
-    
+    particles.draw(ctx);
+
     // Draw attached tile on top if it exists
     if (tongue.attachedTile) {
         tongue.attachedTile.draw(ctx, images);
@@ -735,20 +754,26 @@ function updatePhysics(deltaSeconds) {
     }
     
     tileGrid.update(deltaSeconds);
+    particles.update(deltaSeconds);
 
     // Heart tile grabbed by tongue: heal immediately when retracted instead of shooting
     if (tongue.state === PLAYERSTATES.LOADED &&
         tongue.attachedTile &&
         tongue.attachedTile.constructor.name === 'HeartTile') {
+        const hc = tileCenter(tongue.attachedTile);
+        particles.powerup(hc.x, hc.y, '#ff6699');
+        particles.powerup(player.x, player.y, '#ff6699', 8);
         player.health = Math.min(player.health + 1, player.maxHealth);
         tongue.attachedTile.type = 'empty';
         tongue.attachedTile = null;
         tongue.state = PLAYERSTATES.IDLE;
         tongue.length = 0;
     }
-    
+
     // Check for tiles that scrolled past player (triggers damage)
-    tileGrid.removeOffscreenTiles(player);
+    tileGrid.removeOffscreenTiles(player, (tile) => {
+        particles.playerHurt(player.x, player.y, 10);
+    });
     
     // Update heart display
     heartDisplay.update(deltaSeconds);
@@ -796,6 +821,8 @@ function checkCollisions() {
                 
                 // Handle BombTile projectile
                 if (flyingTile.constructor.name === 'BombTile' && typeof flyingTile.onDestroy === 'function') {
+                    const bc = tileCenter(flyingTile);
+                    particles.bombExplosion(bc.x, bc.y);
                     flyingTile.onDestroy(tileGrid);
                     addScore(10);
                     flyingTile.type = 'empty';
@@ -806,6 +833,8 @@ function checkCollisions() {
                 // Handle IceTile/SlowTile projectile
                 if ((flyingTile.constructor.name === 'IceTile' || flyingTile.constructor.name === 'SlowTile') 
                     && typeof flyingTile.onHit === 'function') {
+                    const fc = tileCenter(flyingTile);
+                    particles.tileDestroy(fc.x, fc.y, tileColor(flyingTile));
                     flyingTile.onHit(tileGrid);
                     addScore(10);
                     flyingTile.type = 'empty';
@@ -816,15 +845,20 @@ function checkCollisions() {
                 // Handle hitting different tile types
                 if (tileName === 'SpikeTile') {
                     // SpikeTile reflects projectile; player is NOT damaged by hitting it
+                    const sc = tileCenter(otherTile);
                     if (otherTile.onHit) {
                         otherTile.onHit(flyingTile);
                     }
                     if (otherTile.health <= 0) {
+                        particles.tileDestroy(sc.x, sc.y, tileColor(otherTile), 14);
                         otherTile.type = 'empty';
                         addScore(30);
                     } else {
+                        particles.tileHit(sc.x, sc.y, tileColor(otherTile));
                         flyingTile.registerBounce();
                     }
+                    const fc2 = tileCenter(flyingTile);
+                    particles.tileDestroy(fc2.x, fc2.y, tileColor(flyingTile), 6);
                     flyingTile.type = 'empty';
                     flyingTile.isMoving = false;
                     return;
@@ -832,10 +866,13 @@ function checkCollisions() {
                 
                 if (tileName === 'HardenedTile') {
                     if (typeof otherTile.onHit === 'function') {
+                        const hc = tileCenter(otherTile);
                         otherTile.onHit(flyingTile);
                         if (otherTile.hp <= 0) {
+                            particles.tileDestroy(hc.x, hc.y, tileColor(otherTile), 12);
                             addScore(25);
                         } else {
+                            particles.tileHit(hc.x, hc.y, tileColor(otherTile));
                             addScore(10);
                             flyingTile.registerBounce();
                         }
@@ -844,6 +881,8 @@ function checkCollisions() {
                 }
                 
                 if (tileName === 'BombTile' && typeof otherTile.onDestroy === 'function') {
+                    const bc = tileCenter(otherTile);
+                    particles.bombExplosion(bc.x, bc.y);
                     otherTile.onDestroy(tileGrid);
                     addScore(10);
                     flyingTile.registerBounce();
@@ -851,6 +890,8 @@ function checkCollisions() {
                 }
                 
                 if ((tileName === 'IceTile' || tileName === 'SlowTile') && typeof otherTile.onHit === 'function') {
+                    const ic = tileCenter(otherTile);
+                    particles.tileDestroy(ic.x, ic.y, tileColor(otherTile));
                     otherTile.onHit(tileGrid);
                     addScore(10);
                     flyingTile.registerBounce();
@@ -858,6 +899,9 @@ function checkCollisions() {
                 }
                 
                 if (tileName === 'ShieldTile' && typeof otherTile.onDestroy === 'function') {
+                    const cx = otherTile.x + otherTile.size / 2;
+                    const cy = otherTile.y + otherTile.size / 2;
+                    particles.powerup(cx, cy, tileColor(otherTile));
                     otherTile.onDestroy(player);
                     otherTile.type = 'empty';
                     addScore(15);
@@ -868,6 +912,9 @@ function checkCollisions() {
 
                 // ShieldTile or MultishotTile thrown as projectile — still grant effect
                 if (flyingTile.constructor.name === 'ShieldTile' && typeof flyingTile.onDestroy === 'function') {
+                    const cx = flyingTile.x + flyingTile.size / 2;
+                    const cy = flyingTile.y + flyingTile.size / 2;
+                    particles.powerup(cx, cy, tileColor(flyingTile));
                     flyingTile.onDestroy(player);
                     flyingTile.type = 'empty';
                     flyingTile.isMoving = false;
@@ -877,6 +924,9 @@ function checkCollisions() {
                 }
                 
                 if (tileName === 'MultishotTile' && typeof otherTile.onDestroy === 'function') {
+                    const cx = otherTile.x + otherTile.size / 2;
+                    const cy = otherTile.y + otherTile.size / 2;
+                    particles.powerup(cx, cy, tileColor(otherTile));
                     otherTile.onDestroy(player);
                     otherTile.type = 'empty';
                     addScore(15);
@@ -886,6 +936,9 @@ function checkCollisions() {
                 }
 
                 if (flyingTile.constructor.name === 'MultishotTile' && typeof flyingTile.onDestroy === 'function') {
+                    const cx = flyingTile.x + flyingTile.size / 2;
+                    const cy = flyingTile.y + flyingTile.size / 2;
+                    particles.powerup(cx, cy, tileColor(flyingTile));
                     flyingTile.onDestroy(player);
                     flyingTile.type = 'empty';
                     flyingTile.isMoving = false;
@@ -895,6 +948,10 @@ function checkCollisions() {
                 }
                 
                 // Standard destruction (normal, poison, etc.)
+                const fc = tileCenter(flyingTile);
+                const oc = tileCenter(otherTile);
+                particles.tileDestroy(fc.x, fc.y, tileColor(flyingTile));
+                particles.tileDestroy(oc.x, oc.y, tileColor(otherTile));
                 flyingTile.type = 'empty';
                 flyingTile.isMoving = false;
                 otherTile.type = 'empty';
@@ -941,9 +998,12 @@ function checkCollisions() {
                 // Check for poison tile - only damages when touched by tongue
                 if (closestTile.constructor.name === 'PoisonTile') {
                     player.damage(1);
+                    particles.playerHurt(player.x, player.y);
                     console.log('Tongue touched poison tile! Took damage.');
                 }
                 // Grab the tile
+                const gc = tileCenter(closestTile);
+                particles.tongueGrab(gc.x, gc.y, tileColor(closestTile));
                 tongue.onCollision(closestTile);
             } else {
                 // Not grabbable: bounce off
