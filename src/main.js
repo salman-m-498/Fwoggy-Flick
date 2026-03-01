@@ -305,7 +305,7 @@ function drawMenu() {
     ctx.fillStyle = 'white';
     ctx.textAlign = "center";
     ctx.font = '48px Arial';
-    ctx.fillText("Tongue Punch", canvas.width/2, canvas.height/2 - 80);
+    ctx.fillText("Fwoggy Flick", canvas.width/2, canvas.height/2 - 80);
 
     // Draw Controls
     ctx.fillStyle = 'white';
@@ -1006,7 +1006,9 @@ function checkCollisions() {
                 particles.tongueGrab(gc.x, gc.y, tileColor(closestTile));
                 tongue.onCollision(closestTile);
             } else {
-                // Not grabbable: bounce off
+                // Not grabbable: bounce off — emit impact chips for feedback
+                const bc = tileCenter(closestTile);
+                particles.tileHit(bc.x, bc.y, tileColor(closestTile));
                 tongue.state = PLAYERSTATES.RETRACTING;
             }
         }

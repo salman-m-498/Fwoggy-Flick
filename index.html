@@ -4,24 +4,27 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Fwoggy-Flick | Physics-Based Tile Hookshot Game</title>
-    <meta name="description" content="A vanilla JavaScript physics-based tile game featuring custom SAT collision detection, finite state machines, and procedural content generation.">
+    <meta name="description" content="A vanilla JavaScript canvas game featuring a frog that grabs tiles with its tongue, launches them as projectiles, and survives a scrolling grid. Custom SAT collision, FSM, pool-based particle system.">
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <header class="hero">
+        <div class="hero-scanlines"></div>
         <div class="hero-content">
-            <h1 class="title">🐸 Fwoggy-Flick</h1>
-            <p class="subtitle">A Physics-Based Tile Hookshot Game</p>
-            <p class="tagline">Grab tiles with your tongue, launch them as projectiles, and survive the endless cascade!</p>
+            <img src="Sprites/fwoggie.png" alt="Fwoggy" class="hero-frog" />
+            <h1 class="title">FWOGGY-FLICK</h1>
+            <p class="subtitle">Physics-Based Tile Hookshot</p>
+            <p class="tagline">Grab tiles with your tongue &bull; Launch them as projectiles &bull; Survive the cascade</p>
+            <a href="#play" class="cta-btn">INSERT COIN</a>
         </div>
     </header>
 
     <main>
         <!-- Game Demo Section -->
-        <section class="game-section">
+        <section class="game-section" id="play">
             <div class="container">
-                <h2>Play Demo</h2>
+                <h2 class="section-title">// PLAY DEMO</h2>
                 <div class="game-wrapper">
                     <div class="canvas-container">
                         <canvas id="gameCanvas" width="800" height="400" tabindex="0"></canvas>
@@ -43,59 +46,100 @@
         <!-- How to Play Section -->
         <section class="how-to-play">
             <div class="container">
-                <h2>How to Play</h2>
-                
+                <h2 class="section-title">// HOW TO PLAY</h2>
+
                 <div class="content-grid">
-                    <div class="controls-card">
-                        <h3>🎮 Controls</h3>
+                    <div class="pixel-card">
+                        <h3 class="card-title">CONTROLS</h3>
                         <ul class="controls-list">
-                            <li><kbd>SPACEBAR</kbd> Extend tongue / Shoot tile / Retract</li>
-                            <li><kbd>P</kbd> or <kbd>ESC</kbd> Pause game</li>
-                            <li><strong>Auto-Aim:</strong> Frog rotates automatically (-70° to +70°)</li>
+                            <li><kbd>SPACE</kbd> Extend tongue / Shoot / Retract</li>
+                            <li><kbd>P</kbd> &nbsp;/&nbsp; <kbd>ESC</kbd> Pause game</li>
+                            <li><span class="label-chip">AUTO-AIM</span> Frog auto-rotates &minus;70&deg; to +70&deg;</li>
                         </ul>
                     </div>
 
-                    <div class="mechanics-card">
-                        <h3>🎯 Game Mechanics</h3>
+                    <div class="pixel-card">
+                        <h3 class="card-title">MECHANICS</h3>
                         <ol class="mechanics-list">
-                            <li><strong>Extend:</strong> Shoot tongue upward to grab tiles</li>
-                            <li><strong>Grab:</strong> Tongue collides with and captures tiles</li>
-                            <li><strong>Retract:</strong> Pull tile back to your mouth</li>
-                            <li><strong>Load:</strong> Hold tile ready to launch</li>
-                            <li><strong>Launch:</strong> Fire tile as projectile to destroy others</li>
+                            <li><span class="step-num">01</span> Shoot tongue upward to grab tiles</li>
+                            <li><span class="step-num">02</span> Tongue tip collides &amp; captures tile</li>
+                            <li><span class="step-num">03</span> Retract &mdash; tile loads at your mouth</li>
+                            <li><span class="step-num">04</span> Press SPACE again to launch it</li>
+                            <li><span class="step-num">05</span> Tile flies, bounces &amp; destroys others</li>
                         </ol>
                     </div>
                 </div>
 
-                <div class="tiles-section">
-                    <h3>🎲 Tile Types</h3>
-                    <div class="tiles-grid">
-                        <div class="tile-card tile-normal">
-                            <div class="tile-icon">🟢</div>
-                            <h4>Normal Tile</h4>
-                            <p>Basic tile • Grabbable • Destroyed on hit</p>
-                        </div>
-                        <div class="tile-card tile-hardened">
-                            <div class="tile-icon">🟤</div>
-                            <h4>Hardened Tile</h4>
-                            <p>2 HP • Reflects projectiles • Cannot be grabbed</p>
-                        </div>
-                        <div class="tile-card tile-bomb">
-                            <div class="tile-icon">💣</div>
-                            <h4>Bomb Tile</h4>
-                            <p>Explodes in 3×3 area • Chain reactions</p>
-                        </div>
-                        <div class="tile-card tile-ice">
-                            <div class="tile-icon">🧊</div>
-                            <h4>Ice Tile</h4>
-                            <p>Freezes grid scrolling • 5 second duration</p>
-                        </div>
+                <h3 class="section-sub">TILE TYPES</h3>
+                <p class="sub-note">Green border = grabbable &bull; Tongue hit on non-grabbable tiles will bounce off.</p>
+
+                <div class="tiles-grid">
+
+                    <div class="tile-card" style="--tile-color:#44cc44">
+                        <img src="Sprites/tiles/normal.png" alt="Normal" class="tile-sprite">
+                        <h4>NORMAL</h4>
+                        <p>Grab &amp; launch. Destroyed on any hit.</p>
                     </div>
+
+                    <div class="tile-card" style="--tile-color:#ff6699">
+                        <img src="Sprites/tiles/heart.png" alt="Heart" class="tile-sprite">
+                        <h4>HEART</h4>
+                        <p>Grab to instantly heal <strong>+1 HP</strong>. Cannot be launched.</p>
+                    </div>
+
+                    <div class="tile-card" style="--tile-color:#ffee00">
+                        <img src="Sprites/tiles/shield.png" alt="Shield" class="tile-sprite">
+                        <h4>SHIELD</h4>
+                        <p>Grab or shoot into to gain <strong>3s invincibility</strong>.</p>
+                    </div>
+
+                    <div class="tile-card" style="--tile-color:#00ffff">
+                        <img src="Sprites/tiles/multishot.png" alt="Multishot" class="tile-sprite">
+                        <h4>MULTISHOT</h4>
+                        <p>Grants a <strong>3-shot burst</strong> on your next launch.</p>
+                    </div>
+
+                    <div class="tile-card" style="--tile-color:#44aaff">
+                        <img src="Sprites/tiles/ice.png" alt="Ice" class="tile-sprite">
+                        <h4>ICE</h4>
+                        <p>Grab or hit to <strong>freeze grid</strong> for 5 seconds.</p>
+                    </div>
+
+                    <div class="tile-card" style="--tile-color:#5566ff">
+                        <img src="Sprites/tiles/slow.png" alt="Slow" class="tile-sprite">
+                        <h4>SLOW</h4>
+                        <p>Freezes then <strong>slows grid speed</strong> temporarily.</p>
+                    </div>
+
+                    <div class="tile-card" style="--tile-color:#ff4422">
+                        <img src="Sprites/tiles/bomb.png" alt="Bomb" class="tile-sprite">
+                        <h4>BOMB</h4>
+                        <p>Explodes in a <strong>3&times;3 area</strong>. Chain reactions!</p>
+                    </div>
+
+                    <div class="tile-card" style="--tile-color:#ff9944">
+                        <img src="Sprites/tiles/spike.png" alt="Spike" class="tile-sprite">
+                        <h4>SPIKE</h4>
+                        <p>Deflects projectiles. Takes <strong>2 hits</strong>. Not grabbable.</p>
+                    </div>
+
+                    <div class="tile-card" style="--tile-color:#bb44ff">
+                        <img src="Sprites/tiles/poison.png" alt="Poison" class="tile-sprite">
+                        <h4>POISON</h4>
+                        <p><strong>Damages you</strong> on tongue contact. Grab at your own risk.</p>
+                    </div>
+
+                    <div class="tile-card" style="--tile-color:#aa8855">
+                        <img src="Sprites/tiles/hardened.png" alt="Hardened" class="tile-sprite">
+                        <h4>HARDENED</h4>
+                        <p>Armoured &mdash; takes <strong>2 hits</strong> to destroy. Not grabbable.</p>
+                    </div>
+
                 </div>
 
                 <div class="objective-card">
-                    <h3>🏆 Objective</h3>
-                    <p>Survive as long as possible! The grid continuously scrolls down at increasing speed. Destroy tiles before they reach the bottom and damage you (3 HP). Earn <strong>10 points/second</strong> survived + <strong>10 points per tile</strong> destroyed. Create chain reactions for massive combos!</p>
+                    <h3 class="card-title">OBJECTIVE</h3>
+                    <p>The grid scrolls down at increasing speed. Destroy tiles before they pass you &mdash; each missed tile costs <strong>1 HP</strong> (max 3 HP). Score <strong>10&ndash;30 pts</strong> per tile destroyed plus <strong>10 pts/second</strong> survived. Chain explosions and powerup combos for high scores!</p>
                 </div>
             </div>
         </section>
@@ -103,102 +147,118 @@
         <!-- About the Project Section -->
         <section class="about-section">
             <div class="container">
-                <h2>About the Project</h2>
-                
-                <div class="project-overview">
-                    <p class="lead">Fwoggy-Flick is a tile-based physics game built entirely from scratch using <strong>vanilla JavaScript</strong> and the <strong>Canvas API</strong>—no game engines, no physics libraries. Every system, from collision detection to state management, was hand-implemented to deepen understanding of game development fundamentals.</p>
+                <h2 class="section-title">// ABOUT THE PROJECT</h2>
+
+                <div class="project-overview pixel-card">
+                    <p class="lead">Fwoggy-Flick is a tile-based physics game built entirely from scratch using <strong>vanilla JavaScript</strong> and the <strong>Canvas API</strong>&mdash;no game engines, no physics libraries. Every system&mdash;collision detection, state machines, particle effects&mdash;was hand-implemented to sharpen core game-development fundamentals.</p>
                 </div>
 
-                <h3>🔧 Technical Highlights</h3>
+                <h3 class="section-sub">TECHNICAL HIGHLIGHTS</h3>
                 <div class="tech-grid">
                     <div class="tech-card">
-                        <div class="tech-icon">⚙️</div>
+                        <div class="tech-icon">&#x2699;&#xFE0F;</div>
                         <h4>Custom Physics Engine</h4>
-                        <p>Hand-implemented collision detection using the <strong>Separating Axis Theorem (SAT)</strong> for pixel-perfect collision between rotating convex polygons. Two-phase detection system: AABB broad-phase for performance, SAT narrow-phase for accuracy.</p>
+                        <p>Hand-implemented collision detection using the <strong>Separating Axis Theorem (SAT)</strong> for pixel-perfect collision between rotating convex polygons. Two-phase: AABB broad-phase for performance, SAT narrow-phase for accuracy.</p>
                     </div>
 
                     <div class="tech-card">
                         <div class="tech-icon">🎭</div>
-                        <h4>Finite State Machine (FSM)</h4>
-                        <p>Clean state management pattern for both Player (IDLE, EXTENDING, RETRACTING, LOADED, DEATH) and GameManager (MENU, PLAYING, PAUSED, GAMEOVER). Prevents edge cases and enables scalable behavior control.</p>
+                        <h4>Finite State Machines</h4>
+                        <p>FSM pattern for Player (<code>IDLE &rarr; EXTENDING &rarr; RETRACTING &rarr; LOADED &rarr; DEATH</code>) and GameManager (<code>MENU &rarr; PLAYING &rarr; PAUSED &rarr; GAMEOVER</code>). Prevents edge cases and enables scalable behaviour control.</p>
+                    </div>
+
+                    <div class="tech-card">
+                        <div class="tech-icon">✨</div>
+                        <h4>Pool-Based Particle System</h4>
+                        <p>Zero heap allocations per frame after init. 500-particle pool with emitter methods per game event: <code>tileDestroy</code>, <code>bombExplosion</code>, <code>playerHurt</code>, <code>powerup</code>, <code>tongueGrab</code>, <code>tileHit</code>. 2-pass render (rings then squares).</p>
                     </div>
 
                     <div class="tech-card">
                         <div class="tech-icon">🏗️</div>
                         <h4>Object-Oriented Architecture</h4>
-                        <p>Inheritance hierarchy with base <code>GameObject</code> class providing shared collision geometry. Polymorphic <code>onHit()</code> and <code>onDestroy()</code> methods enable tile-specific behaviors. Composition over inheritance where appropriate.</p>
+                        <p>Inheritance hierarchy with base <code>GameObject</code> class. Polymorphic <code>onHit()</code> and <code>onDestroy()</code> methods enable tile-specific behaviours without switch-case sprawl. Composition over inheritance where appropriate.</p>
                     </div>
 
                     <div class="tech-card">
                         <div class="tech-icon">🎨</div>
-                        <h4>Sprite System & Rendering</h4>
-                        <p>JSON atlas-based sprite rendering with frame animation support. Custom game loop using <code>requestAnimationFrame</code> with fixed deltaTime for time-independent physics. Transform matrix operations for rotation and translation.</p>
+                        <h4>Sprite System &amp; Rendering</h4>
+                        <p>JSON atlas-based sprite rendering with frame animation. <code>requestAnimationFrame</code> loop with fixed deltaTime for time-independent physics. Arcade HUD drawn entirely on-canvas with <em>Press Start 2P</em> pixel font.</p>
                     </div>
 
                     <div class="tech-card">
                         <div class="tech-icon">🔀</div>
                         <h4>Procedural Content Generation</h4>
-                        <p>Weighted random tile spawning system with infinite scrolling grid. Dynamic difficulty scaling as speed increases over time. Efficient tile recycling prevents memory leaks during extended play sessions.</p>
+                        <p>Weighted random tile spawning with an infinite scrolling grid. Dynamic difficulty &mdash; scroll speed scales with score. Tile recycling and pooling prevent GC pressure during long sessions.</p>
+                    </div>
+
+                    <div class="tech-card">
+                        <div class="tech-icon">📺</div>
+                        <h4>Canvas Fullscreen &amp; Scaling</h4>
+                        <p>Fullscreen API (<code>requestFullscreen</code> + webkit fallback) with JS letterbox scaling. <code>scaleToFit()</code> calculates <code>min(vw, vh&times;ASPECT)</code> and updates canvas CSS dimensions, with a <code>resize</code> listener active during fullscreen.</p>
                     </div>
 
                     <div class="tech-card">
                         <div class="tech-icon">💾</div>
                         <h4>Data Persistence</h4>
-                        <p>LocalStorage integration for leaderboard system with score tracking and session management. Maintains best scores across sessions for player retention and progression.</p>
+                        <p>LocalStorage leaderboard with score tracking across sessions. Score system: 10 pts/second survived, 10&ndash;30 pts per tile (type-dependent), with dynamic speed scaling as a soft difficulty curve.</p>
                     </div>
                 </div>
 
-                <h3>📚 Learning Outcomes</h3>
+                <h3 class="section-sub">LEARNING OUTCOMES</h3>
                 <div class="learning-outcomes">
                     <div class="outcome-category">
-                        <h4>Computer Science Fundamentals</h4>
+                        <h4>Computer Science</h4>
                         <ul>
-                            <li><strong>Algorithms:</strong> Implemented SAT collision detection from academic resources</li>
-                            <li><strong>Computational Geometry:</strong> Vector mathematics, dot products, polygon projections</li>
-                            <li><strong>Data Structures:</strong> Grid-based spatial management, object pooling concepts</li>
-                            <li><strong>Performance Optimization:</strong> Two-phase collision detection, early exit strategies</li>
+                            <li>SAT collision detection from academic resources &amp; papers</li>
+                            <li>Vector maths &mdash; dot products, polygon projections, normals</li>
+                            <li>Object pooling for zero-GC particle system design</li>
+                            <li>Two-phase collision for broad/narrow performance split</li>
                         </ul>
                     </div>
 
                     <div class="outcome-category">
                         <h4>Software Engineering</h4>
                         <ul>
-                            <li><strong>Design Patterns:</strong> Finite State Machine, Strategy Pattern (polymorphic behaviors), Module Pattern</li>
-                            <li><strong>Clean Code:</strong> Separation of concerns, single responsibility principle, consistent naming</li>
-                            <li><strong>Architecture:</strong> OOP with inheritance hierarchies, composition for complex behaviors</li>
-                            <li><strong>Modularity:</strong> ES6 modules with clear dependencies and exports</li>
+                            <li>FSM, Strategy Pattern, Module Pattern throughout</li>
+                            <li>Single responsibility, separation of concerns</li>
+                            <li>ES6 modules with clean dependency trees</li>
+                            <li>Composition vs inheritance trade-off decisions</li>
                         </ul>
                     </div>
 
                     <div class="outcome-category">
                         <h4>Game Development</h4>
                         <ul>
-                            <li><strong>Game Loop Architecture:</strong> Update/render separation, fixed timestep physics</li>
-                            <li><strong>Physics Simulation:</strong> Velocity-based movement, projectile trajectories, bounce mechanics</li>
-                            <li><strong>State Management:</strong> Preventing impossible transitions and edge cases</li>
-                            <li><strong>Canvas Rendering:</strong> Low-level 2D graphics programming, transform matrices</li>
+                            <li>Update/render loop separation, fixed-timestep physics</li>
+                            <li>Projectile trajectory, velocity degradation, bounce mechanics</li>
+                            <li>FSM transitions preventing impossible game states</li>
+                            <li>Pool-based particles with multi-pass canvas rendering</li>
                         </ul>
                     </div>
 
                     <div class="outcome-category">
-                        <h4>Problem-Solving & Self-Learning</h4>
+                        <h4>Debugging &amp; Problem Solving</h4>
                         <ul>
-                            <li><strong>Research Skills:</strong> Studied SAT algorithm from external resources and academic papers</li>
-                            <li><strong>Mathematical Implementation:</strong> Translated abstract math concepts into working code</li>
-                            <li><strong>Debugging Complex Systems:</strong> Debugged rotation, collision, and physics interactions</li>
-                            <li><strong>Vanilla JS Mastery:</strong> Built complete game without framework dependencies</li>
+                            <li>Debugged rotation/collision interactions on-canvas visually</li>
+                            <li>Resolved FSM edge cases in tongue retract &amp; tile load flow</li>
+                            <li>Diagnosed GC spikes; redesigned to pool-based allocation</li>
+                            <li>Canvas fullscreen letterbox scaling across browsers</li>
                         </ul>
                     </div>
                 </div>
 
-                <h3>✨ Key Features</h3>
+                <h3 class="section-sub">KEY FEATURES</h3>
                 <ul class="features-list">
-                    <li><strong>Pixel-Perfect Collision:</strong> SAT algorithm handles arbitrary convex polygons with rotation</li>
-                    <li><strong>Physics-Based Projectiles:</strong> Velocity vectors, bounce mechanics with degradation (max 5 bounces)</li>
-                    <li><strong>Chain Reaction System:</strong> Projectiles destroy multiple tiles, bombs create 3×3 explosions</li>
-                    <li><strong>Dynamic Difficulty:</strong> Grid scroll speed increases progressively as player survives</li>
-                    <li><strong>Leaderboard System:</strong> Persistent high scores with localStorage API</li>
-                    <li><strong>Responsive State Management:</strong> Pause/resume, death handling, game state transitions</li>
+                    <li><strong>SAT Collision:</strong> Pixel-perfect on arbitrary rotating convex polygons</li>
+                    <li><strong>Physics Projectiles:</strong> Velocity vectors &amp; bounce degradation (max 5 bounces)</li>
+                    <li><strong>Chain Reactions:</strong> Bomb tiles create 3&times;3 cascade explosions</li>
+                    <li><strong>Particle System:</strong> 500-pool, zero GC, 6 emitter types with ring+square passes</li>
+                    <li><strong>10 Tile Types:</strong> Normal, Hardened, Bomb, Ice, Slow, Spike, Poison, Heart, Shield, Multishot</li>
+                    <li><strong>Dynamic Difficulty:</strong> Grid speed scales progressively with player score</li>
+                    <li><strong>Arcade HUD:</strong> On-canvas sidebar with live stats, tile guide &amp; sprite icons</li>
+                    <li><strong>Fullscreen Mode:</strong> Letterbox scaling with Fullscreen API + resize listener</li>
+                    <li><strong>Leaderboard:</strong> Persistent best-score via localStorage</li>
+                    <li><strong>Powerup System:</strong> Shield (invincibility), Multishot (3x burst), Heal, Freeze, Slow</li>
                 </ul>
             </div>
         </section>
@@ -206,10 +266,10 @@
 
     <footer>
         <div class="container">
-            <p>Built with vanilla JavaScript & Canvas API • No game engines, no physics libraries</p>
+            <p class="footer-stack">VANILLA JS &bull; CANVAS API &bull; NO ENGINES &bull; NO LIBRARIES</p>
             <p class="footer-links">
                 <a href="https://github.com/salman-m-498/Fwoggy-Flick" target="_blank" rel="noopener noreferrer">
-                    View on GitHub →
+                    VIEW SOURCE ON GITHUB &rarr;
                 </a>
             </p>
         </div>
