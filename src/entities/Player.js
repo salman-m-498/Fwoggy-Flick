@@ -36,6 +36,7 @@ export class Frog extends GameObject {
         this.multishotCount = 0;
         this.hasMultishot = false;
         this.damageFlashTime = 0;
+        this.shootFreezeTime = 0;  // Briefly freeze movement after shooting
     }
 
     getVertices() {
@@ -67,7 +68,8 @@ export class Frog extends GameObject {
         this.lastVelocityY = this.y;
         
         // --- Lateral movement (arrow keys) ---
-        if (keys && this.state !== PLAYERSTATES.DEATH) {
+        if (this.shootFreezeTime > 0) this.shootFreezeTime -= deltaSeconds;
+        if (keys && this.state !== PLAYERSTATES.DEATH && this.shootFreezeTime <= 0) {
             const movingLeft  = keys['ArrowLeft'];
             const movingRight = keys['ArrowRight'];
             // Squash sprite on direction reversal for juice
@@ -426,6 +428,9 @@ export class Tongue extends GameObject {
             });
         }
         
+        // Freeze lateral movement briefly so shots register cleanly
+        this.frog.shootFreezeTime = 0.2;
+
         // Store reference for multishot
         const shotTile = this.attachedTile;
         this.attachedTile = null;
