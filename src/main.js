@@ -159,8 +159,7 @@ function resetGameState() {
     player.shieldTime = 0;
     player.multishotCount = 0;
     player.hasMultishot = false;
-    player.damageFlashTime = 0;
-    resetScore();
+    player.damageFlashTime = 0;\n    deathTransitionTimer = 0;\n    resetScore();
     
     // Clear tiles and reset grid
     tileGrid.tiles = [];
@@ -360,6 +359,9 @@ const tileGrid = new TileGrid(
 
 const particles = new ParticleSystem(500);
 
+// ── Death transition state ────────────────────────────────────────────────────
+let deathTransitionTimer = 0;
+
 const TILE_COLORS = {
     NormalTile:     '#44cc44',
     BombTile:       '#ff4422',
@@ -378,6 +380,24 @@ function tileCenter(tile) { return { x: tile.x + tile.size / 2, y: tile.y + tile
 function drawGameWorld() {
     ctx.fillStyle = 'lightblue';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // ── Danger zone: tiles near the offscreen threshold glow red ──
+    const DANGER_Y = 450;
+    const DANGER_BAND = 50;
+    const dangerPulse = 0.2 + Math.abs(Math.sin(performance.now() * 0.004)) * 0.25;
+    tileGrid.tiles.forEach(tile => {
+        if (tile.type === 'empty' || tile.type === 'projectile') return;
+        const depth = (tile.y - (DANGER_Y - DANGER_BAND)) / DANGER_BAND;
+        if (depth > 0) {
+            const alpha = Math.min(depth, 1) * dangerPulse;
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = '#ff2200';
+            ctx.fillRect(tile.x + tile.gapSize, tile.y + tile.gapSize,
+                         tile.size - tile.gapSize * 2, tile.size - tile.gapSize * 2);
+            ctx.restore();
+        }
+    });
 
     tileGrid.draw(ctx, images);
     particles.draw(ctx);
@@ -778,10 +798,12 @@ function updatePhysics(deltaSeconds) {
     // Update heart display
     heartDisplay.update(deltaSeconds);
     
-    // Check if player is dead
-    if (player.state === PLAYERSTATES.DEATH) {
-        saveScoreToLeaderboard(getPlayerScore());
-        gameManager.toGameOver();
+    // Check if player is dead — begin transition instead of hard-cutting
+    if (player.state === PLAYERSTATES.DEATH &&
+        gameManager.getState() === GAMESTATES.PLAYING) {
+        deathTransitionTimer = 0;
+        tileGrid.scrollSpeed = 0;
+        gameManager.setState(GAMESTATES.DEATH_TRANSITION);
     }
     
     // Update all tiles (for projectiles)
@@ -1045,6 +1067,36 @@ function gameLoop(timestamp) {
             drawGameWorld();
             drawPauseOverlay();
             break;
+
+        case GAMESTATES.DEATH_TRANSITION: {
+            deathTransitionTimer += deltaSeconds;
+            drawGameWorld();
+            drawHUD();
+            // Phase 1 (0–1.2s): red vignette grows in
+            if (deathTransitionTimer < 1.2) {
+                const vigAlpha = (deathTransitionTimer / 1.2) * 0.65;
+                const grad = ctx.createRadialGradient(
+                    canvas.width / 2, canvas.height / 2, canvas.height * 0.1,
+                    canvas.width / 2, canvas.height / 2, canvas.height * 0.85
+                );
+                grad.addColorStop(0, 'rgba(180,0,0,0)');
+                grad.addColorStop(1, `rgba(180,0,0,${vigAlpha})`);
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+            // Phase 2 (1.2–1.8s): fade to black
+            if (deathTransitionTimer >= 1.2) {
+                const blackAlpha = Math.min((deathTransitionTimer - 1.2) / 0.6, 1);
+                ctx.fillStyle = `rgba(0,0,0,${blackAlpha})`;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+            // Phase 3 (1.8s+): switch to game over
+            if (deathTransitionTimer >= 1.8) {
+                saveScoreToLeaderboard(getPlayerScore());
+                gameManager.toGameOver();
+            }
+            break;
+        }
 
         case GAMESTATES.GAMEOVER:
             drawGameOverScreen();
