@@ -7,6 +7,10 @@ import { GameManager, GAMESTATES } from './GameManager.js';
 import { ParticleSystem } from './ParticleSystem.js';
 import {
     addScore,
+    addComboHit,
+    updateCombo,
+    resetCombo,
+    getComboState,
     getBestScore,
     getPlayerScore,
     initBestScoreFromLeaderboard,
@@ -591,14 +595,55 @@ function drawHUD_left() {
 
     hudDivider(116, LX, LW);
 
-    // ── CONTROLS ──
-    hudLabel(10, 128, 'CONTROLS');
-    hudControl(10, 133, 'SPC', 'FIRE');
-    hudControl(10, 150, '←→',  'MOVE');
-    hudControl(10, 167, '↑↓',  'AIM');
-    hudControl(10, 184, 'P',   'PAUSE');
+    // ── COMBO BAR ──
+    const combo = getComboState();
+    hudLabel(10, 128, 'COMBO');
+    const barX = 10, barY = 133, barW = LW - 20, barH = 8;
+    // Background track
+    ctx.fillStyle = '#1a2a1a';
+    ctx.fillRect(barX, barY, barW, barH);
+    if (combo.count > 0) {
+        // Fill colour based on multiplier tier
+        const barColor = combo.multiplier >= 8 ? '#ff2244'
+                       : combo.multiplier >= 5 ? '#ff8800'
+                       : combo.multiplier >= 3 ? '#ffdd00'
+                       : '#44ff88';
+        const fillW = Math.round(barW * combo.barFill);
+        ctx.shadowColor = barColor;
+        ctx.shadowBlur = 6;
+        ctx.fillStyle = barColor;
+        ctx.fillRect(barX, barY, fillW, barH);
+        ctx.shadowBlur = 0;
+        // Multiplier text
+        ctx.fillStyle = barColor;
+        ctx.font = `bold 7px ${HUD.PIXEL_FONT}`;
+        ctx.textAlign = 'center';
+        ctx.shadowColor = barColor;
+        ctx.shadowBlur = 8;
+        ctx.fillText(`x${combo.multiplier}`, cx, barY + barH + 10);
+        ctx.shadowBlur = 0;
+    } else {
+        ctx.fillStyle = HUD.textDim;
+        ctx.font = `6px ${HUD.PIXEL_FONT}`;
+        ctx.textAlign = 'center';
+        ctx.fillText('x1', cx, barY + barH + 10);
+    }
+    // Tick marks at multiplier thresholds (5, 10, 20, 35 hits out of 35 max)
+    [5, 10, 20, 35].forEach(threshold => {
+        ctx.fillStyle = '#445544';
+        ctx.fillRect(barX + Math.round(barW * threshold / 35), barY - 1, 1, barH + 2);
+    });
 
-    hudDivider(200, LX, LW);
+    hudDivider(157, LX, LW);
+
+    // ── CONTROLS ──
+    hudLabel(10, 168, 'CONTROLS');
+    hudControl(10, 173, 'SPC', 'FIRE');
+    hudControl(10, 190, '←→',  'MOVE');
+    hudControl(10, 207, '↑↓',  'AIM');
+    hudControl(10, 224, 'P',   'PAUSE');
+
+    hudDivider(240, LX, LW);
 
     // ── STATUS (active effects only) ──
     const statusItems = [];
@@ -612,15 +657,15 @@ function drawHUD_left() {
         statusItems.push([HUD.pillSlow,    `SLOWED ${tileGrid.slowTimeRemaining.toFixed(1)}s`]);
 
     if (statusItems.length > 0) {
-        hudLabel(10, 211, 'STATUS');
+        hudLabel(10, 251, 'STATUS');
         statusItems.forEach(([col, txt], i) => {
-            hudPill(10, 215 + i * 19, col, txt);
+            hudPill(10, 255 + i * 19, col, txt);
         });
     } else {
         ctx.fillStyle = HUD.textDim;
         ctx.font = `6px ${HUD.PIXEL_FONT}`;
         ctx.textAlign = 'center';
-        ctx.fillText('-- no effects --', cx, 216);
+        ctx.fillText('-- no effects --', cx, 256);
     }
 
     // CRT scanlines
@@ -755,6 +800,7 @@ function drawGameOverScreen() {
 
 function updatePhysics(deltaSeconds) {
     updateScore(deltaSeconds);
+    updateCombo(deltaSeconds);
     
     player.update(deltaSeconds, tongue, keys);
     tongue.update(deltaSeconds, keysJustPressed['Space'], tileGrid);
@@ -793,6 +839,7 @@ function updatePhysics(deltaSeconds) {
     // Check for tiles that scrolled past player (triggers damage)
     tileGrid.removeOffscreenTiles(player, (tile) => {
         particles.playerHurt(player.x, player.y, 10);
+        resetCombo();
     });
     
     // Update heart display
@@ -846,7 +893,8 @@ function checkCollisions() {
                     const bc = tileCenter(flyingTile);
                     particles.bombExplosion(bc.x, bc.y);
                     flyingTile.onDestroy(tileGrid);
-                    addScore(10);
+                    addScore(75 * getComboState().multiplier);
+                    addComboHit();
                     flyingTile.type = 'empty';
                     flyingTile.isMoving = false;
                     return;
@@ -858,7 +906,8 @@ function checkCollisions() {
                     const fc = tileCenter(flyingTile);
                     particles.tileDestroy(fc.x, fc.y, tileColor(flyingTile));
                     flyingTile.onHit(tileGrid);
-                    addScore(10);
+                    addScore(80 * getComboState().multiplier);
+                    addComboHit();
                     flyingTile.type = 'empty';
                     flyingTile.isMoving = false;
                     return;
@@ -874,10 +923,13 @@ function checkCollisions() {
                     if (otherTile.health <= 0) {
                         particles.tileDestroy(sc.x, sc.y, tileColor(otherTile), 14);
                         otherTile.type = 'empty';
-                        addScore(30);
+                        addScore(200 * getComboState().multiplier);
+                        addComboHit();
                     } else {
                         particles.tileHit(sc.x, sc.y, tileColor(otherTile));
                         flyingTile.registerBounce();
+                        addScore(30 * getComboState().multiplier);
+                        addComboHit();
                     }
                     const fc2 = tileCenter(flyingTile);
                     particles.tileDestroy(fc2.x, fc2.y, tileColor(flyingTile), 6);
@@ -892,10 +944,12 @@ function checkCollisions() {
                         otherTile.onHit(flyingTile);
                         if (otherTile.hp <= 0) {
                             particles.tileDestroy(hc.x, hc.y, tileColor(otherTile), 12);
-                            addScore(25);
+                            addScore(150 * getComboState().multiplier);
+                            addComboHit();
                         } else {
                             particles.tileHit(hc.x, hc.y, tileColor(otherTile));
-                            addScore(10);
+                            addScore(50 * getComboState().multiplier);
+                            addComboHit();
                             flyingTile.registerBounce();
                         }
                     }
@@ -906,7 +960,8 @@ function checkCollisions() {
                     const bc = tileCenter(otherTile);
                     particles.bombExplosion(bc.x, bc.y);
                     otherTile.onDestroy(tileGrid);
-                    addScore(10);
+                    addScore(75 * getComboState().multiplier);
+                    addComboHit();
                     flyingTile.registerBounce();
                     return;
                 }
@@ -915,7 +970,8 @@ function checkCollisions() {
                     const ic = tileCenter(otherTile);
                     particles.tileDestroy(ic.x, ic.y, tileColor(otherTile));
                     otherTile.onHit(tileGrid);
-                    addScore(10);
+                    addScore(80 * getComboState().multiplier);
+                    addComboHit();
                     flyingTile.registerBounce();
                     return;
                 }
@@ -926,7 +982,8 @@ function checkCollisions() {
                     particles.powerup(cx, cy, tileColor(otherTile));
                     otherTile.onDestroy(player);
                     otherTile.type = 'empty';
-                    addScore(15);
+                    addScore(100 * getComboState().multiplier);
+                    addComboHit();
                     flyingTile.type = 'empty';
                     flyingTile.isMoving = false;
                     return;
@@ -941,7 +998,8 @@ function checkCollisions() {
                     flyingTile.type = 'empty';
                     flyingTile.isMoving = false;
                     otherTile.type = 'empty';
-                    addScore(15);
+                    addScore(100 * getComboState().multiplier);
+                    addComboHit();
                     return;
                 }
                 
@@ -951,7 +1009,8 @@ function checkCollisions() {
                     particles.powerup(cx, cy, tileColor(otherTile));
                     otherTile.onDestroy(player);
                     otherTile.type = 'empty';
-                    addScore(15);
+                    addScore(100 * getComboState().multiplier);
+                    addComboHit();
                     flyingTile.type = 'empty';
                     flyingTile.isMoving = false;
                     return;
@@ -965,7 +1024,8 @@ function checkCollisions() {
                     flyingTile.type = 'empty';
                     flyingTile.isMoving = false;
                     otherTile.type = 'empty';
-                    addScore(15);
+                    addScore(100 * getComboState().multiplier);
+                    addComboHit();
                     return;
                 }
                 
@@ -977,7 +1037,8 @@ function checkCollisions() {
                 flyingTile.type = 'empty';
                 flyingTile.isMoving = false;
                 otherTile.type = 'empty';
-                addScore(10);
+                addScore(100 * getComboState().multiplier);
+                addComboHit();
                 flyingTile.registerBounce();
             }
         });
@@ -1020,6 +1081,7 @@ function checkCollisions() {
                 // Check for poison tile - only damages when touched by tongue
                 if (closestTile.constructor.name === 'PoisonTile') {
                     player.damage(1);
+                    resetCombo();
                     particles.playerHurt(player.x, player.y);
                     console.log('Tongue touched poison tile! Took damage.');
                 }
