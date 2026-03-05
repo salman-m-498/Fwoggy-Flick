@@ -24,9 +24,12 @@ function _calcMultiplier(count) {
 }
 
 function addComboHit() {
+    const prevMult  = comboMultiplier;
     comboCount++;
     comboTimer      = COMBO_WINDOW;
     comboMultiplier = _calcMultiplier(comboCount);
+    // Return new multiplier only when a tier was just crossed
+    return comboMultiplier > prevMult ? comboMultiplier : null;
 }
 
 function updateCombo(deltaSeconds) {

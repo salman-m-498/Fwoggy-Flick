@@ -166,6 +166,9 @@ function resetGameState() {
     player.damageFlashTime = 0;
     player.storedPowerUp = null;
     deathTransitionTimer = 0;
+    screenShake.intensity = 0;
+    screenShake.duration  = 0;
+    scorePopups = [];
     resetScore();
     
     // Clear tiles and reset grid
@@ -371,6 +374,26 @@ const particles = new ParticleSystem(500);
 // ── Death transition state ────────────────────────────────────────────────────
 let deathTransitionTimer = 0;
 
+// ── Screen shake ─────────────────────────────────────────────────────────────
+let screenShake = { intensity: 0, duration: 0 };
+function addShake(intensity, duration) {
+    if (intensity > screenShake.intensity) {
+        screenShake.intensity = intensity;
+        screenShake.duration  = duration;
+    }
+}
+
+// ── Floating score popups ─────────────────────────────────────────────────────
+let scorePopups = [];
+function spawnPopup(x, y, text, color = '#FFD700', large = false) {
+    scorePopups.push({ x, y, text, color, alpha: 1, vy: -55, time: 0, large });
+}
+/** Calls addComboHit() and fires a tier-up popup at (x,y) when a new tier is reached */
+function comboHit(x, y) {
+    const newMult = addComboHit();
+    if (newMult) spawnPopup(x, y, `COMBO x${newMult}!`, '#ff8844', true);
+}
+
 const TILE_COLORS = {
     NormalTile:     '#44cc44',
     BombTile:       '#ff4422',
@@ -388,6 +411,12 @@ function tileColor(tile) { return TILE_COLORS[tile.constructor.name] || '#aaffaa
 function tileCenter(tile) { return { x: tile.x + tile.size / 2, y: tile.y + tile.size / 2 }; }
 
 function drawGameWorld() {
+    // ── Screen shake ──
+    const shakeX = screenShake.intensity > 0 ? (Math.random() - 0.5) * screenShake.intensity : 0;
+    const shakeY = screenShake.intensity > 0 ? (Math.random() - 0.5) * screenShake.intensity : 0;
+    ctx.save();
+    ctx.translate(shakeX, shakeY);
+
     ctx.fillStyle = 'lightblue';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -412,6 +441,21 @@ function drawGameWorld() {
     tileGrid.draw(ctx, images);
     particles.draw(ctx);
 
+    // ── Floating score popups ──
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    scorePopups.forEach(p => {
+        ctx.globalAlpha = p.alpha;
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur  = p.large ? 10 : 5;
+        ctx.fillStyle   = p.color;
+        ctx.font        = p.large ? `bold 13px ${HUD.PIXEL_FONT}` : `bold 8px ${HUD.PIXEL_FONT}`;
+        ctx.fillText(p.text, p.x, p.y);
+    });
+    ctx.globalAlpha  = 1;
+    ctx.shadowBlur   = 0;
+    ctx.textBaseline = 'alphabetic';
+
     // Draw attached tile on top if it exists
     if (tongue.attachedTile) {
         tongue.attachedTile.draw(ctx, images);
@@ -419,6 +463,22 @@ function drawGameWorld() {
 
     player.draw(ctx, images);
     tongue.draw(ctx);
+
+    // ── Low-HP vignette ──
+    if (player.health === 1 && player.state !== PLAYERSTATES.DEATH) {
+        const vigAlpha = 0.3 + Math.sin(performance.now() / 250) * 0.15;
+        const grad = ctx.createRadialGradient(
+            canvas.width / 2, canvas.height / 2, canvas.height * 0.2,
+            canvas.width / 2, canvas.height / 2, canvas.height * 0.85
+        );
+        grad.addColorStop(0, 'rgba(200,0,0,0)');
+        grad.addColorStop(1, `rgba(200,0,0,${vigAlpha})`);
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    // ── End screen shake transform ──
+    ctx.restore();
 }
 
 // ── HUD helper drawing functions ─────────────────────────────────────────────
@@ -842,6 +902,23 @@ function drawGameOverScreen() {
 function updatePhysics(deltaSeconds) {
     updateScore(deltaSeconds);
     updateCombo(deltaSeconds);
+
+    // Tick screen shake
+    if (screenShake.duration > 0) {
+        screenShake.duration -= deltaSeconds;
+        if (screenShake.duration <= 0) {
+            screenShake.intensity = 0;
+            screenShake.duration  = 0;
+        }
+    }
+
+    // Advance floating score popups
+    scorePopups = scorePopups.filter(p => {
+        p.time += deltaSeconds;
+        p.y    += p.vy * deltaSeconds;
+        p.alpha = Math.max(0, 1 - p.time / 0.8);
+        return p.alpha > 0;
+    });
     
     player.update(deltaSeconds, tongue, keys);
     tongue.update(deltaSeconds, keysJustPressed['Space'], tileGrid);
@@ -905,8 +982,11 @@ function updatePhysics(deltaSeconds) {
                     const px = GAME_CONFIG.leftBound + (i / 7) * GAME_CONFIG.playWidth;
                     particles.bombExplosion(px, rowY);
                 }
-                addScore(cleared * 150 * combo.multiplier);
-                addComboHit();
+                const ptsLH = Math.round(cleared * 150 * combo.multiplier);
+                addScore(ptsLH);
+                spawnPopup(GAME_CONFIG.leftBound + GAME_CONFIG.playWidth / 2, rowY - 20, `+${ptsLH}`, '#FFD700', true);
+                addShake(10, 0.35);
+                comboHit(GAME_CONFIG.leftBound + GAME_CONFIG.playWidth / 2, rowY - 30);
             }
         } else if (player.storedPowerUp === 'LINE_V') {
             const colX = player.x;
@@ -916,8 +996,11 @@ function updatePhysics(deltaSeconds) {
                     const py = 30 + i * 80;
                     particles.bombExplosion(colX, py);
                 }
-                addScore(cleared * 150 * combo.multiplier);
-                addComboHit();
+                const ptsLV = Math.round(cleared * 150 * combo.multiplier);
+                addScore(ptsLV);
+                spawnPopup(colX, 180, `+${ptsLV}`, '#FFD700', true);
+                addShake(10, 0.35);
+                comboHit(colX, 170);
             }
         } else if (player.storedPowerUp === 'NUKE') {
             // Clear bottom 3 rows
@@ -930,8 +1013,11 @@ function updatePhysics(deltaSeconds) {
             particles.bombExplosion(GAME_CONFIG.leftBound + 80,  200);
             particles.bombExplosion(GAME_CONFIG.rightBound - 80, 200);
             if (totalCleared > 0) {
-                addScore(totalCleared * 200 * combo.multiplier);
-                addComboHit();
+                const ptsNuke = Math.round(totalCleared * 200 * combo.multiplier);
+                addScore(ptsNuke);
+                spawnPopup(canvas.width / 2, 160, `NUKE! +${ptsNuke}`, '#ff4422', true);
+                addShake(16, 0.55);
+                comboHit(canvas.width / 2, 150);
             }
         }
         player.storedPowerUp = null;
@@ -940,6 +1026,7 @@ function updatePhysics(deltaSeconds) {
     // Check for tiles that scrolled past player (triggers damage)
     tileGrid.removeOffscreenTiles(player, (tile) => {
         particles.playerHurt(player.x, player.y, 10);
+        addShake(8, 0.3);
         resetCombo();
     });
     
@@ -994,9 +1081,11 @@ function checkCollisions() {
                     const bc = tileCenter(flyingTile);
                     particles.bombExplosion(bc.x, bc.y);
                     flyingTile.onDestroy(tileGrid);
-                    addScore(75 * getComboState().multiplier);
-                    addComboHit();
-                    flyingTile.type = 'empty';
+                    const pts75 = Math.round(75 * getComboState().multiplier);
+                    addScore(pts75);
+                    spawnPopup(bc.x, bc.y - 10, `+${pts75}`, '#ff4422');
+                    addShake(12, 0.4);
+                    comboHit(bc.x, bc.y - 20);
                     flyingTile.isMoving = false;
                     return;
                 }
@@ -1007,8 +1096,10 @@ function checkCollisions() {
                     const fc = tileCenter(flyingTile);
                     particles.tileDestroy(fc.x, fc.y, tileColor(flyingTile));
                     flyingTile.onHit(tileGrid);
-                    addScore(80 * getComboState().multiplier);
-                    addComboHit();
+                    const pts80a = Math.round(80 * getComboState().multiplier);
+                    addScore(pts80a);
+                    spawnPopup(fc.x, fc.y - 10, `+${pts80a}`, '#44aaff');
+                    comboHit(fc.x, fc.y - 20);
                     flyingTile.type = 'empty';
                     flyingTile.isMoving = false;
                     return;
@@ -1024,13 +1115,19 @@ function checkCollisions() {
                     if (otherTile.health <= 0) {
                         particles.tileDestroy(sc.x, sc.y, tileColor(otherTile), 14);
                         otherTile.type = 'empty';
-                        addScore(200 * getComboState().multiplier);
-                        addComboHit();
+                        const pts200 = Math.round(200 * getComboState().multiplier);
+                        addScore(pts200);
+                        spawnPopup(sc.x, sc.y - 10, `+${pts200}`, '#ff9944');
+                        addShake(6, 0.2);
+                        comboHit(sc.x, sc.y - 20);
                     } else {
                         particles.tileHit(sc.x, sc.y, tileColor(otherTile));
                         flyingTile.registerBounce();
-                        addScore(30 * getComboState().multiplier);
-                        addComboHit();
+                        const pts30 = Math.round(30 * getComboState().multiplier);
+                        addScore(pts30);
+                        spawnPopup(sc.x, sc.y - 10, `+${pts30}`, '#ff9944');
+                        addShake(4, 0.15);
+                        comboHit(sc.x, sc.y - 20);
                     }
                     const fc2 = tileCenter(flyingTile);
                     particles.tileDestroy(fc2.x, fc2.y, tileColor(flyingTile), 6);
@@ -1045,12 +1142,18 @@ function checkCollisions() {
                         otherTile.onHit(flyingTile);
                         if (otherTile.hp <= 0) {
                             particles.tileDestroy(hc.x, hc.y, tileColor(otherTile), 12);
-                            addScore(150 * getComboState().multiplier);
-                            addComboHit();
+                            const pts150 = Math.round(150 * getComboState().multiplier);
+                            addScore(pts150);
+                            spawnPopup(hc.x, hc.y - 10, `+${pts150}`, '#aa8855');
+                            addShake(5, 0.2);
+                            comboHit(hc.x, hc.y - 20);
                         } else {
                             particles.tileHit(hc.x, hc.y, tileColor(otherTile));
-                            addScore(50 * getComboState().multiplier);
-                            addComboHit();
+                            const pts50 = Math.round(50 * getComboState().multiplier);
+                            addScore(pts50);
+                            spawnPopup(hc.x, hc.y - 10, `+${pts50}`, '#aa8855');
+                            addShake(4, 0.15);
+                            comboHit(hc.x, hc.y - 20);
                             flyingTile.registerBounce();
                         }
                     }
@@ -1061,8 +1164,11 @@ function checkCollisions() {
                     const bc = tileCenter(otherTile);
                     particles.bombExplosion(bc.x, bc.y);
                     otherTile.onDestroy(tileGrid);
-                    addScore(75 * getComboState().multiplier);
-                    addComboHit();
+                    const pts75b = Math.round(75 * getComboState().multiplier);
+                    addScore(pts75b);
+                    spawnPopup(bc.x, bc.y - 10, `+${pts75b}`, '#ff4422');
+                    addShake(12, 0.4);
+                    comboHit(bc.x, bc.y - 20);
                     flyingTile.registerBounce();
                     return;
                 }
@@ -1071,8 +1177,10 @@ function checkCollisions() {
                     const ic = tileCenter(otherTile);
                     particles.tileDestroy(ic.x, ic.y, tileColor(otherTile));
                     otherTile.onHit(tileGrid);
-                    addScore(80 * getComboState().multiplier);
-                    addComboHit();
+                    const pts80b = Math.round(80 * getComboState().multiplier);
+                    addScore(pts80b);
+                    spawnPopup(ic.x, ic.y - 10, `+${pts80b}`, '#44aaff');
+                    comboHit(ic.x, ic.y - 20);
                     flyingTile.registerBounce();
                     return;
                 }
@@ -1083,8 +1191,10 @@ function checkCollisions() {
                     particles.powerup(cx, cy, tileColor(otherTile));
                     otherTile.onDestroy(player);
                     otherTile.type = 'empty';
-                    addScore(100 * getComboState().multiplier);
-                    addComboHit();
+                    const pts100s = Math.round(100 * getComboState().multiplier);
+                    addScore(pts100s);
+                    spawnPopup(cx, cy - 10, `+${pts100s}`, '#ffee00');
+                    comboHit(cx, cy - 20);
                     flyingTile.type = 'empty';
                     flyingTile.isMoving = false;
                     return;
@@ -1099,8 +1209,10 @@ function checkCollisions() {
                     flyingTile.type = 'empty';
                     flyingTile.isMoving = false;
                     otherTile.type = 'empty';
-                    addScore(100 * getComboState().multiplier);
-                    addComboHit();
+                    const pts100sf = Math.round(100 * getComboState().multiplier);
+                    addScore(pts100sf);
+                    spawnPopup(cx, cy - 10, `+${pts100sf}`, '#ffee00');
+                    comboHit(cx, cy - 20);
                     return;
                 }
                 
@@ -1110,8 +1222,10 @@ function checkCollisions() {
                     particles.powerup(cx, cy, tileColor(otherTile));
                     otherTile.onDestroy(player);
                     otherTile.type = 'empty';
-                    addScore(100 * getComboState().multiplier);
-                    addComboHit();
+                    const pts100m = Math.round(100 * getComboState().multiplier);
+                    addScore(pts100m);
+                    spawnPopup(cx, cy - 10, `+${pts100m}`, '#00ffff');
+                    comboHit(cx, cy - 20);
                     flyingTile.type = 'empty';
                     flyingTile.isMoving = false;
                     return;
@@ -1125,8 +1239,10 @@ function checkCollisions() {
                     flyingTile.type = 'empty';
                     flyingTile.isMoving = false;
                     otherTile.type = 'empty';
-                    addScore(100 * getComboState().multiplier);
-                    addComboHit();
+                    const pts100mf = Math.round(100 * getComboState().multiplier);
+                    addScore(pts100mf);
+                    spawnPopup(cx, cy - 10, `+${pts100mf}`, '#00ffff');
+                    comboHit(cx, cy - 20);
                     return;
                 }
                 
@@ -1138,8 +1254,10 @@ function checkCollisions() {
                 flyingTile.type = 'empty';
                 flyingTile.isMoving = false;
                 otherTile.type = 'empty';
-                addScore(100 * getComboState().multiplier);
-                addComboHit();
+                const pts100n = Math.round(100 * getComboState().multiplier);
+                addScore(pts100n);
+                spawnPopup(oc.x, oc.y - 10, `+${pts100n}`, '#44cc44');
+                comboHit(oc.x, oc.y - 20);
                 flyingTile.registerBounce();
             }
         });
@@ -1184,7 +1302,7 @@ function checkCollisions() {
                     player.damage(1);
                     resetCombo();
                     particles.playerHurt(player.x, player.y);
-                    console.log('Tongue touched poison tile! Took damage.');
+                    addShake(8, 0.3);
                 }
                 // Grab the tile
                 const gc = tileCenter(closestTile);
