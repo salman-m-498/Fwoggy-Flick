@@ -320,52 +320,215 @@ function handlePauseInput() {
     keysJustPressed = {};
 }
 
-function drawMenu() {
-    
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+// ── Shared pond background for menu / game-over screens ─────────────────────
+// TODO: Replace placeholder pond art with hand-drawn illustrations — see GitHub issue #3
+function drawPondScene(t, dark = false) {
+    const cx = canvas.width / 2, cy = canvas.height / 2;
 
-    ctx.fillStyle = 'black';
+    // Water radial gradient
+    const wg = ctx.createRadialGradient(cx, cy, 0, cx, cy, canvas.height * 0.85);
+    if (dark) {
+        wg.addColorStop(0,    '#182e40');
+        wg.addColorStop(0.5,  '#0c1c2c');
+        wg.addColorStop(1,    '#040a10');
+    } else {
+        wg.addColorStop(0,    '#87cee8');
+        wg.addColorStop(0.45, '#5aaed4');
+        wg.addColorStop(1,    '#1b5a8a');
+    }
+    ctx.fillStyle = wg;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Draw Title
-    ctx.fillStyle = 'white';
-    ctx.textAlign = "center";
-    ctx.font = '48px Arial';
-    ctx.fillText("Fwoggy Flick", canvas.width/2, canvas.height/2 - 80);
+    // Vignette
+    const vg = ctx.createRadialGradient(cx, cy, canvas.height * 0.25, cx, cy, canvas.height * 1.1);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(1, dark ? 'rgba(0,0,0,0.76)' : 'rgba(0,0,22,0.45)');
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Draw Controls
-    ctx.fillStyle = 'white';
-    ctx.textAlign = "center";
-    ctx.font = '16px Arial';
-    ctx.fillText("\u2190 \u2192  Move    \u2191 \u2193  Aim    SPACE  Fire", canvas.width/2, canvas.height/2 - 20);
+    // Animated lily pads at the edges
+    const padGreen  = dark ? '#1e4828' : '#2a8a2a';
+    const veinColor = dark ? 'rgba(10,50,20,0.5)' : 'rgba(20,82,20,0.45)';
+    const rippleCol = dark ? '#2a627a' : '#6ec8e8';
+    const pads = [
+        { x: 72,  y: 72,  r: 26, rot: 0.4, spd: 0.8  },
+        { x: 728, y: 58,  r: 20, rot: 2.1, spd: 1.2  },
+        { x: 52,  y: 308, r: 18, rot: 1.1, spd: 0.6  },
+        { x: 748, y: 322, r: 22, rot: 3.5, spd: 1.0  },
+        { x: 195, y: 368, r: 14, rot: 0.2, spd: 1.4  },
+        { x: 606, y: 375, r: 16, rot: 4.2, spd: 0.9  },
+    ];
+    pads.forEach(p => {
+        const wy = Math.sin(t * 0.001 * p.spd) * 2.5;
+        ctx.save();
+        ctx.translate(p.x, p.y + wy);
+        ctx.rotate(p.rot + Math.sin(t * 0.0006) * 0.04);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.arc(0, 0, p.r, 0.3, Math.PI * 2 - 0.3);
+        ctx.closePath();
+        ctx.fillStyle = padGreen;
+        ctx.fill();
+        ctx.strokeStyle = veinColor;
+        ctx.lineWidth = 0.8;
+        for (let v = 0; v < 5; v++) {
+            const va = 0.3 + (v / 4) * (Math.PI * 2 - 0.6);
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(Math.cos(va) * p.r * 0.88, Math.sin(va) * p.r * 0.88);
+            ctx.stroke();
+        }
+        ctx.restore();
+        // Ripple rings
+        for (let i = 0; i < 3; i++) {
+            const phase = ((t * 0.00025 * p.spd) + i / 3) % 1;
+            const rr    = phase * p.r * 2.8;
+            ctx.save();
+            ctx.globalAlpha = (1 - phase) * (dark ? 0.15 : 0.22);
+            ctx.strokeStyle = rippleCol;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.ellipse(p.x, p.y + Math.sin(t * 0.001 * p.spd) * 2.5, rr, rr * 0.36, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+    });
 
-    // Draw Instructions
-    ctx.fillStyle = 'white';
-    ctx.textAlign = "center";
-    ctx.font = '20px Arial';
-    ctx.fillText("Press SPACE to Start", canvas.width/2, canvas.height/2 + 20);
+    // Film grain
+    ctx.globalAlpha = dark ? 0.022 : 0.015;
+    ctx.fillStyle = dark ? '#003040' : '#c8eeff';
+    for (let i = 0; i < 400; i++)
+        ctx.fillRect(Math.random() * canvas.width, Math.random() * canvas.height, 2, 2);
+    ctx.fillStyle = '#000d1a';
+    for (let i = 0; i < 220; i++)
+        ctx.fillRect(Math.random() * canvas.width, Math.random() * canvas.height, 1, 1);
+    ctx.globalAlpha = 1;
+}
 
-    // Draw Leaderboard
-    ctx.fillStyle = '#FFD700';
-    ctx.font = 'bold 18px Arial';
-    ctx.textAlign = "center";
-    ctx.fillText("TOP SCORES", canvas.width/2, canvas.height/2 + 60);
-    
+function drawMenu() {
+    // TODO: Replace placeholder art with hand-drawn menu illustrations — see GitHub issue #3
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const t  = performance.now();
+    const cx = canvas.width / 2;
+
+    drawPondScene(t, false);
+
+    // ── Frog sprite with gentle bob ──
+    if (images.frogSprite) {
+        const frogSz = 44;
+        const frogY  = 42 + Math.sin(t * 0.0028) * 4;
+        ctx.save();
+        ctx.shadowColor = '#22dd66';
+        ctx.shadowBlur  = 22;
+        ctx.globalAlpha = 0.95;
+        ctx.drawImage(images.frogSprite, cx - frogSz / 2, frogY - frogSz / 2, frogSz, frogSz);
+        ctx.restore();
+    }
+
+    // ── Title ──
+    hudGlowText('FWOGGY-FLICK', cx, 90, 17, HUD.neonGreen, HUD.neonGreenGlow, 20);
+    ctx.fillStyle   = '#88ddaa';
+    ctx.font        = `6px ${HUD.PIXEL_FONT}`;
+    ctx.textAlign   = 'center';
+    ctx.fillText('GRAB  ·  FLICK  ·  SURVIVE', cx, 108);
+
+    // ── Main panel ──
+    const PW = 480, PH = 242, PX = cx - PW / 2, PY = 118;
+    ctx.fillStyle   = 'rgba(0,8,18,0.72)';
+    ctx.beginPath();
+    ctx.roundRect(PX, PY, PW, PH, 6);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(68,255,136,0.22)';
+    ctx.lineWidth   = 1;
+    ctx.stroke();
+
+    // Controls header
+    ctx.fillStyle = HUD.neonGreen;
+    ctx.font      = `6px ${HUD.PIXEL_FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillText('CONTROLS', cx, PY + 17);
+    ctx.fillStyle = 'rgba(68,255,136,0.20)';
+    ctx.fillRect(PX + 16, PY + 22, PW - 32, 1);
+
+    // 2×2 control grid
+    const ctrlItems = [
+        { key: '\u2190 \u2192', label: 'MOVE'  },
+        { key: '\u2191 \u2193', label: 'AIM'   },
+        { key: 'SPACE',          label: 'FIRE'  },
+        { key: 'P / ESC',        label: 'PAUSE' },
+    ];
+    const cellW = (PW - 32) / 2;
+    ctrlItems.forEach(({ key, label }, i) => {
+        const col   = i % 2;
+        const row   = Math.floor(i / 2);
+        const cellX = PX + 16 + col * cellW;
+        const iy    = PY + 36 + row * 22;
+        const badgeX = cellX + 30;
+        const chipW = 48, chipH = 13;
+        ctx.fillStyle   = 'rgba(68,255,136,0.13)';
+        ctx.beginPath();
+        ctx.roundRect(badgeX - chipW / 2, iy - 10, chipW, chipH, 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(68,255,136,0.40)';
+        ctx.lineWidth   = 0.8;
+        ctx.stroke();
+        ctx.fillStyle   = HUD.arcadeYellow;
+        ctx.font        = `6px ${HUD.PIXEL_FONT}`;
+        ctx.textAlign   = 'center';
+        ctx.fillText(key, badgeX, iy);
+        ctx.fillStyle   = HUD.textMuted;
+        ctx.textAlign   = 'left';
+        ctx.fillText(label, badgeX + chipW / 2 + 8, iy);
+    });
+
+    // Divider
+    ctx.fillStyle = 'rgba(68,255,136,0.18)';
+    ctx.fillRect(PX + 16, PY + 80, PW - 32, 1);
+
+    // Leaderboard header
+    ctx.fillStyle = HUD.arcadeYellow;
+    ctx.font      = `6px ${HUD.PIXEL_FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillText('TOP SCORES', cx, PY + 95);
+
     const leaderboard = loadLeaderboard().slice(0, 5);
-    ctx.fillStyle = 'white';
-    ctx.font = '14px Arial';
-    ctx.textAlign = "center";
-    
     if (leaderboard.length === 0) {
-        ctx.fillText("No scores yet", canvas.width/2, canvas.height/2 + 90);
+        ctx.fillStyle = HUD.textDim;
+        ctx.font      = `5px ${HUD.PIXEL_FONT}`;
+        ctx.fillText('— no scores yet —', cx, PY + 116);
     } else {
         leaderboard.forEach((entry, idx) => {
-            ctx.fillText(`${idx + 1}. ${entry.score} — ${entry.date}`, canvas.width/2, canvas.height/2 + 85 + (idx * 20));
+            const rowY = PY + 110 + idx * 18;
+            if (idx === 0) {
+                ctx.fillStyle = 'rgba(255,220,0,0.09)';
+                ctx.fillRect(PX + 16, rowY - 10, PW - 32, 14);
+            }
+            ctx.font      = `5px ${HUD.PIXEL_FONT}`;
+            ctx.fillStyle = idx === 0 ? HUD.arcadeYellow : HUD.textMuted;
+            ctx.textAlign = 'left';
+            ctx.fillText(`${idx + 1}.`, PX + 26, rowY);
+            ctx.textAlign = 'center';
+            ctx.fillText(String(entry.score), cx, rowY);
+            ctx.fillStyle = HUD.textDim;
+            ctx.textAlign = 'right';
+            ctx.fillText(entry.date, PX + PW - 26, rowY);
         });
     }
 
+    // Pulsing CTA
+    const pulse = 0.55 + Math.abs(Math.sin(t * 0.004)) * 0.45;
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle   = HUD.neonGreen;
+    ctx.font        = `8px ${HUD.PIXEL_FONT}`;
+    ctx.textAlign   = 'center';
+    ctx.shadowColor = HUD.neonGreenGlow;
+    ctx.shadowBlur  = 14;
+    ctx.fillText('[ PRESS SPACE ]', cx, PY + PH + 22);
+    ctx.shadowBlur  = 0;
+    ctx.globalAlpha = 1;
+
     if (keys['Space']) {
-        keysJustPressed['Space'] = false; // Consume the key
+        keysJustPressed['Space'] = false;
         gameManager.startGame();
     }
 }
@@ -954,50 +1117,142 @@ function drawHUD() {
 }
 
 function drawGameOverScreen() {
+    // TODO: Replace placeholder art with hand-drawn game-over illustrations — see GitHub issue #3
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const t  = performance.now();
+    const cx = canvas.width / 2;
 
-    ctx.fillStyle = 'black';
+    drawPondScene(t, true);
+
+    // Dark gradient over the top half to frame the title
+    const topFade = ctx.createLinearGradient(0, 0, 0, canvas.height * 0.42);
+    topFade.addColorStop(0, 'rgba(0,0,0,0.60)');
+    topFade.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = topFade;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Draw Game Over Text
-    ctx.fillStyle = 'white';
-    ctx.textAlign = "center";
-    ctx.font = '48px Arial';
-    ctx.fillText("GAME OVER!", canvas.width/2, canvas.height/2 - 100);
+    // ── Green slime drips hanging from the top ──
+    const dripCols = ['#33cc44', '#22bb33', '#44dd55', '#1aaa2a', '#55ee66'];
+    for (let d = 0; d < 6; d++) {
+        const dripX = cx - 110 + d * 44;
+        const dripH = 10 + (d % 3) * 9 + Math.sin(t * 0.0018 + d * 1.3) * 3;
+        ctx.fillStyle   = dripCols[d % dripCols.length];
+        ctx.globalAlpha = 0.72;
+        ctx.beginPath();
+        ctx.roundRect(dripX - 3, 0, 6, dripH, [0, 0, 4, 4]);
+        ctx.fill();
+    }
+    ctx.globalAlpha = 1;
 
-    // Draw Final Score
-    ctx.fillStyle = '#FFD700';
-    ctx.font = 'bold 36px Arial';
-    ctx.fillText(`Score: ${getPlayerScore()}`, canvas.width/2, canvas.height/2 - 30);
-    updateBestScore(getPlayerScore());
-    
-    // Draw Best Score
-    ctx.fillStyle = 'white';
-    ctx.font = '20px Arial';
-    ctx.fillText(`Best: ${getBestScore()}`, canvas.width/2, canvas.height/2 + 10);
+    // ── GAME OVER title ──
+    hudGlowText('GAME OVER', cx, 58, 19, HUD.neonGreen, '#00ff44', 24);
 
-    // Draw Top 10 Leaderboard
-    ctx.fillStyle = '#FFD700';
-    ctx.font = 'bold 16px Arial';
-    ctx.fillText("TOP 10 ALL-TIME", canvas.width/2, canvas.height/2 + 50);
-    
-    const leaderboard = loadLeaderboard().slice(0, 10);
-    ctx.fillStyle = 'white';
-    ctx.font = '12px Arial';
-    ctx.textAlign = "center";
-    
-    leaderboard.forEach((entry, idx) => {
-        const text = `${idx + 1}. ${entry.score} — ${entry.date}`;
-        ctx.fillText(text, canvas.width/2, canvas.height/2 + 65 + (idx * 14));
-    });
+    // Flavour line
+    ctx.fillStyle = '#55997a';
+    ctx.font      = `6px ${HUD.PIXEL_FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillText('the pond grows silent...', cx, 74);
 
-    // Draw Instructions
-    ctx.fillStyle = 'white';
-    ctx.font = '20px Arial';
-    ctx.fillText("Press SPACE to return to Menu", canvas.width/2, canvas.height - 40);
+    // ── Score panel ──
+    const PW = 420, PH = 228, PX = cx - PW / 2, PY = 82;
+    ctx.fillStyle   = 'rgba(0,5,15,0.76)';
+    ctx.beginPath();
+    ctx.roundRect(PX, PY, PW, PH, 6);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(68,255,136,0.22)';
+    ctx.lineWidth   = 1;
+    ctx.stroke();
+
+    // Final score
+    const playerScore = getPlayerScore();
+    updateBestScore(playerScore);
+    const bestScore = getBestScore();
+    const isNewBest = playerScore > 0 && playerScore >= bestScore;
+
+    ctx.fillStyle = HUD.textMuted;
+    ctx.font      = `6px ${HUD.PIXEL_FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillText('FINAL SCORE', cx, PY + 18);
+
+    ctx.save();
+    ctx.shadowColor = HUD.arcadeYellowGlow;
+    ctx.shadowBlur  = 18;
+    ctx.fillStyle   = HUD.arcadeYellow;
+    ctx.font        = `22px ${HUD.PIXEL_FONT}`;
+    ctx.textAlign   = 'center';
+    ctx.fillText(String(playerScore), cx, PY + 52);
+    ctx.restore();
+
+    // NEW BEST badge or best score label
+    if (isNewBest) {
+        const bp = 0.78 + Math.abs(Math.sin(t * 0.005)) * 0.22;
+        ctx.save();
+        ctx.globalAlpha = bp;
+        ctx.fillStyle   = '#ffd700';
+        ctx.font        = `7px ${HUD.PIXEL_FONT}`;
+        ctx.textAlign   = 'center';
+        ctx.shadowColor = '#ffcc00';
+        ctx.shadowBlur  = 14;
+        ctx.fillText('\u2605  NEW BEST!  \u2605', cx, PY + 68);
+        ctx.restore();
+    } else {
+        ctx.fillStyle = HUD.textDim;
+        ctx.font      = `5px ${HUD.PIXEL_FONT}`;
+        ctx.textAlign = 'center';
+        ctx.fillText(`BEST: ${bestScore}`, cx, PY + 68);
+    }
+
+    // Divider
+    ctx.fillStyle = 'rgba(68,255,136,0.18)';
+    ctx.fillRect(PX + 16, PY + 76, PW - 32, 1);
+
+    // Leaderboard
+    ctx.fillStyle = HUD.arcadeYellow;
+    ctx.font      = `6px ${HUD.PIXEL_FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillText('TOP SCORES', cx, PY + 91);
+
+    const leaderboard = loadLeaderboard().slice(0, 5);
+    if (leaderboard.length === 0) {
+        ctx.fillStyle = HUD.textDim;
+        ctx.font      = `5px ${HUD.PIXEL_FONT}`;
+        ctx.fillText('\u2014 no scores yet \u2014', cx, PY + 112);
+    } else {
+        leaderboard.forEach((entry, idx) => {
+            const rowY = PY + 106 + idx * 18;
+            if (idx === 0) {
+                ctx.fillStyle = 'rgba(255,220,0,0.09)';
+                ctx.fillRect(PX + 16, rowY - 10, PW - 32, 14);
+            }
+            ctx.font      = `5px ${HUD.PIXEL_FONT}`;
+            ctx.fillStyle = idx === 0 ? HUD.arcadeYellow : HUD.textMuted;
+            ctx.textAlign = 'left';
+            ctx.fillText(`${idx + 1}.`, PX + 26, rowY);
+            ctx.textAlign = 'center';
+            ctx.fillText(String(entry.score), cx, rowY);
+            ctx.fillStyle = HUD.textDim;
+            ctx.textAlign = 'right';
+            ctx.fillText(entry.date, PX + PW - 26, rowY);
+        });
+    }
+
+    // Pulsing CTA
+    const pulse = 0.55 + Math.abs(Math.sin(t * 0.004)) * 0.45;
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle   = HUD.neonGreen;
+    ctx.font        = `8px ${HUD.PIXEL_FONT}`;
+    ctx.textAlign   = 'center';
+    ctx.shadowColor = HUD.neonGreenGlow;
+    ctx.shadowBlur  = 14;
+    ctx.fillText('[ PRESS SPACE ]', cx, PY + PH + 20);
+    ctx.shadowBlur  = 0;
+    ctx.globalAlpha = 1;
+    ctx.fillStyle   = HUD.textDim;
+    ctx.font        = `5px ${HUD.PIXEL_FONT}`;
+    ctx.fillText('TO RETURN TO MENU', cx, PY + PH + 34);
 
     if (keys['Space']) {
-        keysJustPressed['Space'] = false; // Consume the key
+        keysJustPressed['Space'] = false;
         gameManager.toMenu();
     }
 }
