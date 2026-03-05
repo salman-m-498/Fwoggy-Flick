@@ -70,7 +70,10 @@ export class Frog extends GameObject {
         
         // --- Lateral movement (arrow keys) ---
         if (this.shootFreezeTime > 0) this.shootFreezeTime -= deltaSeconds;
-        if (keys && this.state !== PLAYERSTATES.DEATH && this.shootFreezeTime <= 0) {
+        const tongueActive = tongue &&
+            (tongue.state === PLAYERSTATES.EXTENDING ||
+             tongue.state === PLAYERSTATES.RETRACTING);
+        if (keys && this.state !== PLAYERSTATES.DEATH && this.shootFreezeTime <= 0 && !tongueActive) {
             const movingLeft  = keys['ArrowLeft'];
             const movingRight = keys['ArrowRight'];
             // Squash sprite on direction reversal for juice
@@ -99,6 +102,7 @@ export class Frog extends GameObject {
         }
         
         if (!this.canRotate) return;
+        if (this.shootFreezeTime > 0 || tongueActive) return;   // freeze rotation during tongue + brief post-shoot
 
         // Manual aim override (Up/Down arrows pause auto-pendulum while held)
         if (keys) {
