@@ -149,10 +149,14 @@ const HUD = {
 
 // Reset game state
 function resetGameState() {
+    // Reset player position to spawn point
+    player.x = 400;
+    player.y = 350;
     player.health = player.maxHealth;
     player.state = PLAYERSTATES.IDLE;
     player.canRotate = true;
     player.rotation = 0;
+    player.rotDirection = 1;
     player.squashTime = 0;
     player.squashAmount = 0;
     player.deathRotation = 0;
@@ -164,6 +168,7 @@ function resetGameState() {
     player.multishotCount = 0;
     player.hasMultishot = false;
     player.damageFlashTime = 0;
+    player.shootFreezeTime = 0;
     player.storedPowerUp = null;
     deathTransitionTimer = 0;
     screenShake.intensity = 0;
@@ -174,18 +179,28 @@ function resetGameState() {
     gridClearAnim.flashAlpha = 0;
     resetScore();
     
+    // Clear all active particles from the previous round
+    particles.clear();
+
     // Clear tiles and reset grid
     tileGrid.tiles = [];
     tileGrid.startY = 0;
     tileGrid.rows = Math.floor(canvas.height / 2 / tileSize);
     tileGrid.scrollSpeed = 1;
     tileGrid.originalScrollSpeed = 1;
+    tileGrid.freezeTimeRemaining = 0;
+    tileGrid.slowTimeRemaining = 0;
+    tileGrid.slowMultiplier = 1;
     tileGrid.initializeGrid();
     
-    // Reset tongue
+    // Reset tongue fully
     tongue.state = PLAYERSTATES.IDLE;
     tongue.length = 0;
     tongue.attachedTile = null;
+    tongue.bounceCount = 0;
+    tongue.segments = [];
+    tongue.segLengths = [];
+    tongue.bounceFlashes = [];
 }
 
 const player = new Frog(400, 350);
@@ -276,10 +291,6 @@ window.addEventListener('keyup', e => {
     }
     keys[e.code] = false;
 });
-
-function update() {
-    // Placeholder for future updates
-}
 
 function drawPauseOverlay() {
     ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';

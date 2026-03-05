@@ -33,6 +33,13 @@ export class ParticleSystem {
 
     // ── internals ─────────────────────────────────────────────────────────────
 
+    /** Deactivate all particles immediately (e.g. on game reset). */
+    clear() {
+        for (let i = 0, l = this._pool.length; i < l; i++) {
+            this._pool[i].active = false;
+        }
+    }
+
     _acquire() {
         const pool = this._pool;
         for (let i = 0, l = pool.length; i < l; i++) {
