@@ -122,8 +122,8 @@ const HUD = {
     border:       '#1e3a1e',
     divider:      '#252525',
     textPrimary:  '#d4ffd4',
-    textMuted:    '#667766',
-    textDim:      '#445544',
+    textMuted:    '#c9d1c9',
+    textDim:      '#9dac9d',
     neonGreen:    '#44ff88',
     neonGreenGlow:'#00ff44',
     arcadeYellow: '#ffee00',
@@ -321,6 +321,7 @@ function handlePauseInput() {
 }
 
 function drawMenu() {
+    
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     ctx.fillStyle = 'black';
@@ -453,8 +454,36 @@ function drawGameWorld() {
     ctx.save();
     ctx.translate(shakeX, shakeY);
 
-    ctx.fillStyle = 'lightblue';
+    // TODO: Replace temp bg with actual water/pond art when assets are ready — see GitHub issue #2
+    // ── Background: radial gradient + vignette + animated film grain ─────────
+    const _bgMidX = GAME_CONFIG.leftBound + GAME_CONFIG.playWidth / 2;
+    const _bgMidY = canvas.height / 2;
+
+    // Radial gradient — lighter shallow water at centre, deeper blue at edges
+    const _bgGrad = ctx.createRadialGradient(_bgMidX, _bgMidY, 0, _bgMidX, _bgMidY, canvas.height * 0.78);
+    _bgGrad.addColorStop(0,    '#87cee8');
+    _bgGrad.addColorStop(0.45, '#5aaed4');
+    _bgGrad.addColorStop(1,    '#1b5a8a');
+    ctx.fillStyle = _bgGrad;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Subtle dark vignette overlay
+    const _vig = ctx.createRadialGradient(_bgMidX, _bgMidY, canvas.height * 0.28, _bgMidX, _bgMidY, canvas.height * 1.05);
+    _vig.addColorStop(0, 'rgba(0,0,0,0)');
+    _vig.addColorStop(1, 'rgba(0,0,22,0.42)');
+    ctx.fillStyle = _vig;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Animated film-grain noise (~1.5% layer opacity)
+    const _pw = GAME_CONFIG.playWidth, _plx = GAME_CONFIG.leftBound;
+    ctx.globalAlpha = 0.016;
+    ctx.fillStyle = '#c8eeff';
+    for (let _i = 0; _i < 500; _i++)
+        ctx.fillRect(_plx + Math.random() * _pw, Math.random() * canvas.height, 2, 2);
+    ctx.fillStyle = '#000c20';
+    for (let _i = 0; _i < 260; _i++)
+        ctx.fillRect(_plx + Math.random() * _pw, Math.random() * canvas.height, 1, 1);
+    ctx.globalAlpha = 1;
 
     // ── Danger zone: tiles near the offscreen threshold glow red ──
     const DANGER_Y = 450;
@@ -495,6 +524,21 @@ function drawGameWorld() {
     // Draw attached tile on top if it exists
     if (tongue.attachedTile) {
         tongue.attachedTile.draw(ctx, images);
+    }
+
+    // Soft circular shadow beneath frog
+    if (player.state !== PLAYERSTATES.DEATH) {
+        const _sx = player.x, _sy = player.y + player.size * 0.48;
+        const _sGrad = ctx.createRadialGradient(_sx, _sy, 0, _sx, _sy, player.size * 0.72);
+        _sGrad.addColorStop(0, 'rgba(0,15,50,0.38)');
+        _sGrad.addColorStop(1, 'rgba(0,15,50,0)');
+        ctx.save();
+        ctx.scale(1, 0.3);
+        ctx.fillStyle = _sGrad;
+        ctx.beginPath();
+        ctx.arc(_sx, _sy / 0.3, player.size * 0.72, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
     }
 
     player.draw(ctx, images);
@@ -652,8 +696,13 @@ function drawHUD_left() {
     const cx = LX + LW / 2;  // centre x = 75
     const now = performance.now() * 0.001;
 
+    // Create a Gradient
+    const grd = ctx.createLinearGradient(0, 0, 170, 0);
+    grd.addColorStop(1, '#82b30d');
+    grd.addColorStop(0, '#135e0d');
+
     // Background
-    ctx.fillStyle = HUD.bg;
+    ctx.fillStyle = grd;
     ctx.fillRect(LX, 0, LW, canvas.height);
 
     // Right border glow
@@ -794,8 +843,13 @@ function drawHUD_right() {
     const cx = RX + RW / 2; // centre = 725
     const lx = RX + 8;      // left margin inside bar
 
+    // Create a Gradient
+    const grd = ctx.createLinearGradient(0, 0, 170, 0);
+    grd.addColorStop(0, '#82b30d');
+    grd.addColorStop(1, '#135e0d');
+
     // Background
-    ctx.fillStyle = HUD.bg;
+    ctx.fillStyle = grd;
     ctx.fillRect(RX, 0, RW, canvas.height);
 
     // Left border glow
