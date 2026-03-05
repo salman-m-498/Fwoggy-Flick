@@ -9,43 +9,49 @@ import { PoisonTile } from './PoisonTile.js';
 import { ShieldTile } from './ShieldTile.js';
 import { MultishotTile } from './MultishotTile.js';
 import { SlowTile } from './SlowTile.js';
+import { PowerUpTile } from './PowerUpTile.js';
 
 // Difficulty-based tile spawn configurations
 // Easy (Score 0-200): Mostly normal tiles with some powerups
 const SPAWN_CONFIG_EASY = [
-    { tileClass: NormalTile, weight: 50 },
-    { tileClass: BombTile, weight: 15 },
-    { tileClass: IceTile, weight: 10 },
-    { tileClass: HardenedTile, weight: 20 },
-    { tileClass: HeartTile, weight: 3 },
-    { tileClass: ShieldTile, weight: 2 },
+    { tileClass: NormalTile,   weight: 45 },
+    { tileClass: BombTile,     weight: 15 },
+    { tileClass: IceTile,      weight: 10 },
+    { tileClass: HardenedTile, weight: 18 },
+    { tileClass: HeartTile,    weight:  4 },
+    { tileClass: ShieldTile,   weight:  3 },
+    { tileClass: PowerUpTile,  weight:  5 },
 ];
 
 // Medium (Score 200-500): Introduce hazards
 const SPAWN_CONFIG_MEDIUM = [
-    { tileClass: NormalTile, weight: 40 },
-    { tileClass: BombTile, weight: 15 },
-    { tileClass: HardenedTile, weight: 20 },
-    { tileClass: SpikeTile, weight: 8 },
-    { tileClass: IceTile, weight: 5 },
-    { tileClass: SlowTile, weight: 3 },
-    { tileClass: HeartTile, weight: 3 },
-    { tileClass: ShieldTile, weight: 3 },
-    { tileClass: MultishotTile, weight: 3 },
+    { tileClass: NormalTile,    weight: 37 },
+    { tileClass: BombTile,      weight: 14 },
+    { tileClass: HardenedTile,  weight: 18 },
+    { tileClass: SpikeTile,     weight:  5 },
+    { tileClass: IceTile,       weight:  5 },
+    { tileClass: SlowTile,      weight:  3 },
+    { tileClass: HeartTile,     weight:  3 },
+    { tileClass: ShieldTile,    weight:  3 },
+    { tileClass: MultishotTile, weight:  3 },
+    { tileClass: PowerUpTile,   weight:  5 },
+    { tileClass: PoisonTile,    weight:  4 },
 ];
 
 // Hard (Score 500+): More hazards, fewer normal tiles
 const SPAWN_CONFIG_HARD = [
-    { tileClass: NormalTile, weight: 30 },
-    { tileClass: BombTile, weight: 15 },
-    { tileClass: HardenedTile, weight: 22 },
-    { tileClass: SpikeTile, weight: 12 },
-    { tileClass: PoisonTile, weight: 5 },
-    { tileClass: IceTile, weight: 3 },
-    { tileClass: SlowTile, weight: 4 },
-    { tileClass: HeartTile, weight: 2 },
-    { tileClass: ShieldTile, weight: 4 },
-    { tileClass: MultishotTile, weight: 3 },
+    { tileClass: NormalTile,    weight: 27 },
+    { tileClass: BombTile,      weight: 13 },
+    { tileClass: HardenedTile,  weight: 18 },
+    { tileClass: SpikeTile,     weight: 10 },
+    { tileClass: PoisonTile,    weight:  6 },
+    { tileClass: IceTile,       weight:  4 },
+    { tileClass: SlowTile,      weight:  4 },
+    { tileClass: HeartTile,     weight:  3 },
+    { tileClass: ShieldTile,    weight:  4 },
+    { tileClass: MultishotTile, weight:  3 },
+    { tileClass: PowerUpTile,   weight:  5 },
+    { tileClass: PoisonTile,    weight:  3 },
 ];
 
 // Function to get spawn config based on score
@@ -193,6 +199,55 @@ export class TileGrid {
         // Apply slow effect after freeze
         this.slowTimeRemaining = duration;
         this.slowMultiplier = multiplier;
+    }
+
+    /** Clear all grid tiles in a one-row band centred at rowY.
+     *  Returns the number of tiles cleared. */
+    clearRow(rowY) {
+        let count = 0;
+        this.tiles.forEach(tile => {
+            if (tile.type === 'empty' || tile.type === 'projectile') return;
+            const tileRow = Math.floor((tile.y - this.startY) / this.tileSize);
+            const targetRow = Math.floor((rowY - this.startY) / this.tileSize);
+            if (tileRow === targetRow) {
+                if (tile.constructor.name === 'BombTile' && typeof tile.onDestroy === 'function') {
+                    tile.onDestroy(this);
+                }
+                tile.type = 'empty';
+                count++;
+            }
+        });
+        return count;
+    }
+
+    /** Clear all grid tiles in a one-column band centred at colX.
+     *  Returns the number of tiles cleared. */
+    clearColumn(colX) {
+        let count = 0;
+        this.tiles.forEach(tile => {
+            if (tile.type === 'empty' || tile.type === 'projectile') return;
+            const tileCol = Math.floor((tile.x - this.startX) / this.tileSize);
+            const targetCol = Math.floor((colX - this.startX) / this.tileSize);
+            if (tileCol === targetCol) {
+                if (tile.constructor.name === 'BombTile' && typeof tile.onDestroy === 'function') {
+                    tile.onDestroy(this);
+                }
+                tile.type = 'empty';
+                count++;
+            }
+        });
+        return count;
+    }
+
+    /** Return the Y centre of the bottom-most occupied row (for LINE_H targeting). */
+    getBottomRowY() {
+        let maxY = -Infinity;
+        this.tiles.forEach(tile => {
+            if (tile.type !== 'empty' && tile.type !== 'projectile') {
+                if (tile.y > maxY) maxY = tile.y;
+            }
+        });
+        return maxY === -Infinity ? this.startY : maxY + this.tileSize / 2;
     }
 
 }

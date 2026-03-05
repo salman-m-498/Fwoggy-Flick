@@ -37,6 +37,7 @@ export class Frog extends GameObject {
         this.hasMultishot = false;
         this.damageFlashTime = 0;
         this.shootFreezeTime = 0;  // Briefly freeze movement after shooting
+        this.storedPowerUp   = null; // 'LINE_H' | 'LINE_V' | 'NUKE' | null
     }
 
     getVertices() {

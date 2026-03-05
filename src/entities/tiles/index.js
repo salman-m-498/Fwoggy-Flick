@@ -9,4 +9,5 @@ export { PoisonTile } from './PoisonTile.js';
 export { ShieldTile } from './ShieldTile.js';
 export { MultishotTile } from './MultishotTile.js';
 export { SlowTile } from './SlowTile.js';
+export { PowerUpTile } from './PowerUpTile.js';
 export { TileGrid } from './TileGrid.js';

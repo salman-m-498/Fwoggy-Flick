@@ -163,7 +163,10 @@ function resetGameState() {
     player.shieldTime = 0;
     player.multishotCount = 0;
     player.hasMultishot = false;
-    player.damageFlashTime = 0;\n    deathTransitionTimer = 0;\n    resetScore();
+    player.damageFlashTime = 0;
+    player.storedPowerUp = null;
+    deathTransitionTimer = 0;
+    resetScore();
     
     // Clear tiles and reset grid
     tileGrid.tiles = [];
@@ -249,6 +252,7 @@ let lastTime = 0;
 window.addEventListener('keydown', e => {
     // Prevent default browser behavior for game controls
     if (e.code === 'Space' || e.code === 'Escape' || e.code === 'KeyP' ||
+        e.code === 'KeyQ' ||
         e.code === 'ArrowLeft' || e.code === 'ArrowRight' ||
         e.code === 'ArrowUp'   || e.code === 'ArrowDown') {
         e.preventDefault();
@@ -259,6 +263,7 @@ window.addEventListener('keydown', e => {
 window.addEventListener('keyup', e => {
     // Prevent default browser behavior for game controls
     if (e.code === 'Space' || e.code === 'Escape' || e.code === 'KeyP' ||
+        e.code === 'KeyQ' ||
         e.code === 'ArrowLeft' || e.code === 'ArrowRight' ||
         e.code === 'ArrowUp'   || e.code === 'ArrowDown') {
         e.preventDefault();
@@ -377,6 +382,7 @@ const TILE_COLORS = {
     ShieldTile:     '#ffee00',
     MultishotTile:  '#00ffff',
     HeartTile:      '#ff6699',
+    PowerUpTile:    '#ffffff',
 };
 function tileColor(tile) { return TILE_COLORS[tile.constructor.name] || '#aaffaa'; }
 function tileCenter(tile) { return { x: tile.x + tile.size / 2, y: tile.y + tile.size / 2 }; }
@@ -642,8 +648,9 @@ function drawHUD_left() {
     hudControl(10, 190, '←→',  'MOVE');
     hudControl(10, 207, '↑↓',  'AIM');
     hudControl(10, 224, 'P',   'PAUSE');
+    hudControl(10, 241, 'Q',   'POWER');
 
-    hudDivider(240, LX, LW);
+    hudDivider(258, LX, LW);
 
     // ── STATUS (active effects only) ──
     const statusItems = [];
@@ -657,15 +664,15 @@ function drawHUD_left() {
         statusItems.push([HUD.pillSlow,    `SLOWED ${tileGrid.slowTimeRemaining.toFixed(1)}s`]);
 
     if (statusItems.length > 0) {
-        hudLabel(10, 251, 'STATUS');
+        hudLabel(10, 268, 'STATUS');
         statusItems.forEach(([col, txt], i) => {
-            hudPill(10, 255 + i * 19, col, txt);
+            hudPill(10, 272 + i * 19, col, txt);
         });
     } else {
         ctx.fillStyle = HUD.textDim;
         ctx.font = `6px ${HUD.PIXEL_FONT}`;
         ctx.textAlign = 'center';
-        ctx.fillText('-- no effects --', cx, 256);
+        ctx.fillText('-- no effects --', cx, 273);
     }
 
     // CRT scanlines
@@ -729,15 +736,49 @@ function drawHUD_right() {
 
     hudDivider(283, RX, RX + RW);
 
+    // ── STORED POWER-UP SLOT ──
+    hudLabel(lx, 295, 'POWER-UP');
+    const slotX = lx, slotY = 300, slotW = RW - 16, slotH = 28;
+    ctx.fillStyle = '#111111';
+    ctx.fillRect(slotX, slotY, slotW, slotH);
+    ctx.strokeStyle = player.storedPowerUp ? '#ffffff' : '#333333';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(slotX + 0.5, slotY + 0.5, slotW - 1, slotH - 1);
+
+    if (player.storedPowerUp) {
+        const hue = ((performance.now() * 0.06) % 360);
+        const slotCol = `hsl(${hue}, 100%, 65%)`;
+        ctx.shadowColor = slotCol;
+        ctx.shadowBlur  = 8;
+        ctx.fillStyle   = slotCol;
+        ctx.font = `bold 7px ${HUD.PIXEL_FONT}`;
+        ctx.textAlign = 'center';
+        const icon = player.storedPowerUp === 'LINE_H' ? '← →'
+                   : player.storedPowerUp === 'LINE_V' ? '↑ ↓'
+                   : '✦ NUKE';
+        ctx.fillText(icon, RX + RW / 2, slotY + 12);
+        ctx.shadowBlur = 0;
+        ctx.fillStyle  = HUD.textMuted;
+        ctx.font = `5px ${HUD.PIXEL_FONT}`;
+        ctx.fillText('[Q] to use', RX + RW / 2, slotY + 22);
+    } else {
+        ctx.fillStyle = HUD.textDim;
+        ctx.font = `5px ${HUD.PIXEL_FONT}`;
+        ctx.textAlign = 'center';
+        ctx.fillText('EMPTY  [Q]', RX + RW / 2, slotY + 16);
+    }
+
+    hudDivider(333, RX, RX + RW);
+
     // ── BEST SCORE ──
-    hudLabel(lx, 295, 'BEST SCORE');
+    hudLabel(lx, 345, 'BEST SCORE');
     const best = getBestScore();
     ctx.shadowColor = HUD.arcadeYellowGlow;
     ctx.shadowBlur = 7;
     ctx.fillStyle = HUD.arcadeYellow;
     ctx.font = `10px ${HUD.PIXEL_FONT}`;
     ctx.textAlign = 'center';
-    ctx.fillText(String(best).padStart(6, '0'), cx, 313);
+    ctx.fillText(String(best).padStart(6, '0'), cx, 363);
     ctx.shadowBlur = 0;
 
     // CRT scanlines
@@ -834,6 +875,66 @@ function updatePhysics(deltaSeconds) {
         tongue.attachedTile = null;
         tongue.state = PLAYERSTATES.IDLE;
         tongue.length = 0;
+    }
+
+    // PowerUpTile grabbed by tongue: store the power-up type instead of shooting
+    if (tongue.state === PLAYERSTATES.LOADED &&
+        tongue.attachedTile &&
+        tongue.attachedTile.constructor.name === 'PowerUpTile') {
+        const pc = tileCenter(tongue.attachedTile);
+        const hue = ((tongue.attachedTile.hueTime * 60) % 360);
+        const col = `hsl(${hue}, 100%, 65%)`;
+        particles.powerup(pc.x, pc.y, col);
+        particles.powerup(player.x, player.y, col, 8);
+        player.storedPowerUp = tongue.attachedTile.powerType;
+        tongue.attachedTile.type = 'empty';
+        tongue.attachedTile = null;
+        tongue.state = PLAYERSTATES.IDLE;
+        tongue.length = 0;
+    }
+
+    // Q key: activate stored power-up
+    if (keysJustPressed['KeyQ'] && player.storedPowerUp) {
+        const combo = getComboState();
+        if (player.storedPowerUp === 'LINE_H') {
+            const rowY = tileGrid.getBottomRowY();
+            const cleared = tileGrid.clearRow(rowY);
+            if (cleared > 0) {
+                // Particle strip across the row
+                for (let i = 0; i < 8; i++) {
+                    const px = GAME_CONFIG.leftBound + (i / 7) * GAME_CONFIG.playWidth;
+                    particles.bombExplosion(px, rowY);
+                }
+                addScore(cleared * 150 * combo.multiplier);
+                addComboHit();
+            }
+        } else if (player.storedPowerUp === 'LINE_V') {
+            const colX = player.x;
+            const cleared = tileGrid.clearColumn(colX);
+            if (cleared > 0) {
+                for (let i = 0; i < 5; i++) {
+                    const py = 30 + i * 80;
+                    particles.bombExplosion(colX, py);
+                }
+                addScore(cleared * 150 * combo.multiplier);
+                addComboHit();
+            }
+        } else if (player.storedPowerUp === 'NUKE') {
+            // Clear bottom 3 rows
+            let totalCleared = 0;
+            const rowY1 = tileGrid.getBottomRowY();
+            totalCleared += tileGrid.clearRow(rowY1);
+            totalCleared += tileGrid.clearRow(rowY1 - tileGrid.tileSize);
+            totalCleared += tileGrid.clearRow(rowY1 - tileGrid.tileSize * 2);
+            particles.bombExplosion(player.x, 200);
+            particles.bombExplosion(GAME_CONFIG.leftBound + 80,  200);
+            particles.bombExplosion(GAME_CONFIG.rightBound - 80, 200);
+            if (totalCleared > 0) {
+                addScore(totalCleared * 200 * combo.multiplier);
+                addComboHit();
+            }
+        }
+        player.storedPowerUp = null;
     }
 
     // Check for tiles that scrolled past player (triggers damage)
