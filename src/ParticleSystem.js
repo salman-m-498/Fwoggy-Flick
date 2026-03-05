@@ -155,6 +155,37 @@ export class ParticleSystem {
         }
     }
 
+    /** Massive rainbow fireworks burst for a full grid-clear celebration. */
+    gridClear(cx, cy, gridW, gridH) {
+        const RAINBOW = ['#ff2244', '#ff8833', '#ffdd00', '#44ff88', '#44aaff', '#cc44ff', '#ff44cc', '#ffffff'];
+        // 20 scattered explosion clusters across the grid
+        for (let i = 0; i < 20; i++) {
+            const px  = cx + (Math.random() - 0.5) * gridW * 0.9;
+            const py  = cy + (Math.random() - 0.5) * gridH * 0.85;
+            const col = RAINBOW[i % RAINBOW.length];
+            for (let j = 0; j < 12; j++) {
+                const a = Math.random() * Math.PI * 2;
+                const s = 55 + Math.random() * 200;
+                this._emit(px, py, Math.cos(a) * s, Math.sin(a) * s,
+                    2 + Math.random() * 6, col,
+                    0.55 + Math.random() * 0.85, 110, 0.88, true, 'square');
+            }
+            this._ring(px, py, col, 85, 0.55);
+        }
+        // Two massive full-canvas sweep rings
+        this._ring(cx, cy, '#ffffff', 260, 0.7);
+        this._ring(cx, cy, '#ffdd44', 190, 0.8);
+        // Upward star shower across the full grid width
+        for (let i = 0; i < 45; i++) {
+            const px  = cx + (Math.random() - 0.5) * gridW;
+            const col = RAINBOW[Math.floor(Math.random() * RAINBOW.length)];
+            const a   = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 0.7;
+            const s   = 160 + Math.random() * 300;
+            this._emit(px, cy + gridH * 0.3, Math.cos(a) * s, Math.sin(a) * s,
+                2 + Math.random() * 3, col, 0.65 + Math.random() * 0.55, 50, 0.93, true, 'spark');
+        }
+    }
+
     // ── core loop ─────────────────────────────────────────────────────────────
 
     update(dt) {

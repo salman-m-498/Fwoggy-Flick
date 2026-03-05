@@ -169,6 +169,9 @@ function resetGameState() {
     screenShake.intensity = 0;
     screenShake.duration  = 0;
     scorePopups = [];
+    gridClearAnim.active     = false;
+    gridClearAnim.timer      = 0;
+    gridClearAnim.flashAlpha = 0;
     resetScore();
     
     // Clear tiles and reset grid
@@ -385,13 +388,35 @@ function addShake(intensity, duration) {
 
 // ── Floating score popups ─────────────────────────────────────────────────────
 let scorePopups = [];
-function spawnPopup(x, y, text, color = '#FFD700', large = false) {
-    scorePopups.push({ x, y, text, color, alpha: 1, vy: -55, time: 0, large });
+function spawnPopup(x, y, text, color = '#FFD700', large = false, life = 0.8, vy = -55) {
+    scorePopups.push({ x, y, text, color, alpha: 1, vy, time: 0, large, life });
 }
 /** Calls addComboHit() and fires a tier-up popup at (x,y) when a new tier is reached */
 function comboHit(x, y) {
     const newMult = addComboHit();
     if (newMult) spawnPopup(x, y, `COMBO x${newMult}!`, '#ff8844', true);
+}
+
+// ── Grid-clear celebration ─────────────────────────────────────────────────────
+let gridClearAnim = { active: false, timer: 0, flashAlpha: 0 };
+function triggerGridClear() {
+    const combo  = getComboState();
+    const bonus  = Math.round(2000 * combo.multiplier);
+    addScore(bonus);
+    for (let i = 0; i < 3; i++) addComboHit(); // push combo bar
+
+    const midX = (GAME_CONFIG.leftBound + GAME_CONFIG.rightBound) / 2;
+    spawnPopup(midX, 140, 'GRID CLEAR!', '#FFD700', true, 1.5, -22);
+    spawnPopup(midX, 168, `+${bonus}`,   '#FFD700', true, 1.5, -22);
+
+    const gridCY = canvas.height / 2;
+    particles.gridClear(midX, gridCY, GAME_CONFIG.playWidth, canvas.height * 0.65);
+
+    addShake(18, 0.7);
+    tileGrid.scrollSpeed  = 0;
+    gridClearAnim.active  = true;
+    gridClearAnim.timer   = 0;
+    gridClearAnim.flashAlpha = 0.75;
 }
 
 const TILE_COLORS = {
@@ -474,6 +499,19 @@ function drawGameWorld() {
         grad.addColorStop(0, 'rgba(200,0,0,0)');
         grad.addColorStop(1, `rgba(200,0,0,${vigAlpha})`);
         ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    // ── Grid-clear flash overlay ──
+    if (gridClearAnim.flashAlpha > 0) {
+        const flash = ctx.createRadialGradient(
+            canvas.width / 2, canvas.height / 2, 0,
+            canvas.width / 2, canvas.height / 2, canvas.width * 0.75
+        );
+        flash.addColorStop(0,    `rgba(255, 245, 140, ${gridClearAnim.flashAlpha})`);
+        flash.addColorStop(0.45, `rgba(255, 190,  20, ${gridClearAnim.flashAlpha * 0.55})`);
+        flash.addColorStop(1,    'rgba(255, 80, 0, 0)');
+        ctx.fillStyle = flash;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
@@ -916,7 +954,7 @@ function updatePhysics(deltaSeconds) {
     scorePopups = scorePopups.filter(p => {
         p.time += deltaSeconds;
         p.y    += p.vy * deltaSeconds;
-        p.alpha = Math.max(0, 1 - p.time / 0.8);
+        p.alpha = Math.max(0, 1 - p.time / p.life);
         return p.alpha > 0;
     });
     
@@ -931,8 +969,8 @@ function updatePhysics(deltaSeconds) {
     const speedIncrease = Math.min(getPlayerScore() / 100, 20) * 0.1; // Max 2x at score 2000
     const targetSpeed = baseSpeed + speedIncrease;
     
-    // Only update speed if not frozen AND not in a slow phase
-    if (tileGrid.freezeTimeRemaining <= 0 && tileGrid.slowTimeRemaining <= 0) {
+    // Only update speed if not frozen, not slowed, and grid-clear anim not active
+    if (tileGrid.freezeTimeRemaining <= 0 && tileGrid.slowTimeRemaining <= 0 && !gridClearAnim.active) {
         tileGrid.originalScrollSpeed = targetSpeed;
         tileGrid.scrollSpeed = targetSpeed;
     }
@@ -1029,6 +1067,32 @@ function updatePhysics(deltaSeconds) {
         addShake(8, 0.3);
         resetCombo();
     });
+
+    // ── Grid-clear detection (run BEFORE tileGrid.update spawns new rows) ──
+    if (!gridClearAnim.active &&
+        gameManager.getState() === GAMESTATES.PLAYING &&
+        player.state !== PLAYERSTATES.DEATH &&
+        tileGrid.tiles.length > 0) {
+        const hasActiveTiles = tileGrid.tiles.some(
+            t => t.type !== 'empty' && t.type !== 'projectile'
+        );
+        if (!hasActiveTiles) triggerGridClear();
+    }
+    // ── Advance grid-clear animation ──
+    if (gridClearAnim.active) {
+        gridClearAnim.timer     += deltaSeconds;
+        gridClearAnim.flashAlpha = Math.max(0, gridClearAnim.flashAlpha - deltaSeconds * 1.5);
+        if (gridClearAnim.timer >= 0.7) {
+            // Preserve any still-flying projectile tiles, rebuild the rest
+            tileGrid.tiles  = tileGrid.tiles.filter(t => t.type === 'projectile');
+            tileGrid.startY = 0;
+            tileGrid.rows   = rows;
+            tileGrid.initializeGrid();
+            tileGrid.scrollSpeed = tileGrid.originalScrollSpeed;
+            gridClearAnim.active = false;
+            gridClearAnim.timer  = 0;
+        }
+    }
     
     // Update heart display
     heartDisplay.update(deltaSeconds);
